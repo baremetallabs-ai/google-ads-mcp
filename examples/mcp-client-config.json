@@ -1,0 +1,27 @@
+{
+  "$comment": [
+    "Standard MCP stdio server configuration. This works with any spec-compliant",
+    "client (Claude Desktop, Claude Code, and others) - the server needs no custom",
+    "client, no proprietary transport, and no approval extension.",
+    "",
+    "Place the contents of `mcpServers` into your client's MCP configuration file.",
+    "Credentials come from the environment; mint a refresh token with",
+    "`npm run get-refresh-token`."
+  ],
+  "mcpServers": {
+    "google-ads": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/absolute/path/to/google-ads-mcp/dist/index.js"],
+      "env": {
+        "GOOGLE_ADS_DEVELOPER_TOKEN": "your-developer-token",
+        "GOOGLE_ADS_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_ADS_CLIENT_SECRET": "your-client-secret",
+        "GOOGLE_ADS_REFRESH_TOKEN": "your-refresh-token",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1234567890",
+        "GOOGLE_ADS_MCP_CONFIG": "/absolute/path/to/google-ads-mcp/config/capabilities.local.yaml",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.local
+
+# Operator configuration holding real account IDs. The shipped default under
+# src/capabilities/ carries placeholders; your real allowlist lives here.
+config/*.local.yaml
+.DS_Store

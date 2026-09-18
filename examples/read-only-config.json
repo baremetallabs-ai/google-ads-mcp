@@ -1,0 +1,23 @@
+{
+  "$comment": [
+    "The same server with the mutation kill switch engaged. Every mutation tool is",
+    "absent from tools/list; the fifteen read tools continue to work. Useful for a",
+    "reporting-only client, or as a safe default while credentials are being proven."
+  ],
+  "mcpServers": {
+    "google-ads-readonly": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/absolute/path/to/google-ads-mcp/dist/index.js"],
+      "env": {
+        "GOOGLE_ADS_DEVELOPER_TOKEN": "your-developer-token",
+        "GOOGLE_ADS_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_ADS_CLIENT_SECRET": "your-client-secret",
+        "GOOGLE_ADS_REFRESH_TOKEN": "your-refresh-token",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1234567890",
+        "GOOGLE_ADS_MCP_CONFIG": "/absolute/path/to/google-ads-mcp/config/capabilities.local.yaml",
+        "GOOGLE_ADS_MUTATIONS_ENABLED": "false"
+      }
+    }
+  }
+}

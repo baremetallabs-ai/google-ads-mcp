@@ -1,0 +1,109 @@
+# Capability configuration for the Google Ads MCP server.
+#
+# This file is the operator's contract with the model. Every mutation the server can
+# perform is enumerated here; anything absent is denied. Unknown keys, unknown tool
+# names and out-of-range constraints all fail startup rather than being ignored.
+version: 1
+
+accounts:
+  # Every tool authorizes the requested customer ID against this list before any
+  # Google Ads call. A customer ID supplied as a tool argument is never sufficient on
+  # its own. IDs are written without dashes.
+  #
+  # PLACEHOLDERS. Replace with your own account IDs, or leave this file alone and
+  # point GOOGLE_ADS_MCP_CONFIG at your own copy - see "Customer allowlisting" in
+  # the README. Until then every tool call is refused with UNAUTHORIZED_CUSTOMER,
+  # which is the intended fail-closed behaviour.
+  allowedCustomerIds:
+    - '1234567890'
+    - '2345678901'
+
+reads:
+  defaultRowLimit: 100
+  maxRowLimit: 1000
+  requestTimeoutMs: 30000
+  maxPages: 20
+  searchGoogleAds:
+    enabled: true
+    maxRowLimit: 1000
+
+mutations:
+  enabled: true
+  default: deny
+
+  tools:
+    pause_campaign:
+      enabled: true
+      maxResourcesPerCall: 1
+
+    enable_campaign:
+      enabled: true
+      maxResourcesPerCall: 1
+
+    pause_ad_group:
+      enabled: true
+      maxResourcesPerCall: 1
+
+    enable_ad_group:
+      enabled: true
+      maxResourcesPerCall: 1
+
+    pause_ad:
+      enabled: true
+      maxResourcesPerCall: 10
+
+    enable_ad:
+      enabled: true
+      maxResourcesPerCall: 10
+
+    pause_keyword:
+      enabled: true
+      maxResourcesPerCall: 20
+
+    enable_keyword:
+      enabled: true
+      maxResourcesPerCall: 20
+
+    add_negative_keyword:
+      enabled: true
+      maxResourcesPerCall: 20
+
+    remove_negative_keyword:
+      enabled: true
+      maxResourcesPerCall: 20
+
+    create_paused_ad:
+      enabled: true
+      maxResourcesPerCall: 10
+
+    create_paused_keyword:
+      enabled: true
+      maxResourcesPerCall: 20
+
+    dismiss_recommendation:
+      enabled: true
+      maxResourcesPerCall: 20
+
+    update_tracking_parameters:
+      enabled: true
+      allowFinalUrlChanges: false
+
+    set_campaign_budget:
+      enabled: true
+      maxResourcesPerCall: 1
+
+budgets:
+  # This ceiling is the sum of *configured* daily budgets across distinct budget
+  # resources, not actual spend. Set it by reading get_budget_pacing against the live
+  # account and choosing a value at or above the reported currentTotalMicros.
+  #
+  # Setting it BELOW the account's existing total locks out every budget call,
+  # including decreases - see "Production limitations" in the README.
+  #
+  # NOTE: this ceiling is a single value applied to whichever allowlisted account a
+  # call targets. It is not per-account. With more than one account allowlisted, set
+  # it from the largest account's total or run one server per account.
+  #
+  # PLACEHOLDER. Set this from a measured `get_budget_pacing` reading against your
+  # own account, choosing a value at or above the reported currentTotalMicros.
+  masterBudgetMicros: '500000000' # $500.00/day
