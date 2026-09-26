@@ -30,8 +30,8 @@ export const listAccessibleAccounts: ReadToolDefinition = {
   async handler(deps: Deps, input): Promise<Record<string, unknown>> {
     const includeDetails = input.includeDetails !== false;
 
-    // listAccessibleCustomers returns only accounts directly accessible to the OAuth
-    // user; a manager's children usually are not in it. It is informational only.
+    // listAccessibleCustomers returns only accounts directly accessible to the configured
+    // credentials; a manager's children usually are not in it. It is informational only.
     let directlyAccessible: string[] = [];
     try {
       const result = await deps.transport.listAccessibleCustomers({ label: 'list_accessible' });
@@ -83,14 +83,14 @@ export const listAccessibleAccounts: ReadToolDefinition = {
     const queryable = accounts.filter((a) => a.queryable === true).length;
 
     // A manager's children are reachable without appearing in listAccessibleCustomers,
-    // so a zero there is normal. Nothing queryable is not: that means the credentials
-    // or the developer token are not working, and the summary has to say so rather
+    // so a zero there is normal. Nothing queryable indicates missing account access,
+    // role, or manager routing, and the summary has to say so rather
     // than reporting a cheerful count of accounts nobody can reach.
     const message = !includeDetails
       ? `${accounts.length} allowlisted account(s); ${directCount} directly accessible to these credentials.`
       : queryable === 0
         ? `${accounts.length} allowlisted account(s), but NONE could be queried. Check the ` +
-          'developer token, the OAuth credentials, and that the login customer ID manages these accounts.'
+          'configured credentials, target-account access and role, and any configured manager link.'
         : `${accounts.length} allowlisted account(s); ${queryable} queryable, ${directCount} directly accessible to these credentials.`;
 
     return {

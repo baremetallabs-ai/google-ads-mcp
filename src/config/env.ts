@@ -1,54 +1,61 @@
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 
-/**
- * Environment configuration.
- *
- * Deliberately NOT a strict object: process.env carries hundreds of unrelated keys.
- * We validate an explicitly picked subset instead. Only the YAML capability file is
- * strict, because that is the file an operator edits by hand.
- */
 const Booleanish = z
   .enum(['true', 'false', '1', '0', 'yes', 'no'])
   .transform((v) => v === 'true' || v === '1' || v === 'yes');
+const Setting = z.string().trim().min(1);
+const ManagerId = z.string().transform((s) => s.replace(/[-\s]/g, '')).pipe(z.string().regex(/^\d{10}$/));
 
 export const EnvSchema = z.object({
-  GOOGLE_ADS_DEVELOPER_TOKEN: z.string().min(1, 'GOOGLE_ADS_DEVELOPER_TOKEN is required'),
-  GOOGLE_ADS_CLIENT_ID: z.string().min(1, 'GOOGLE_ADS_CLIENT_ID is required'),
-  GOOGLE_ADS_CLIENT_SECRET: z.string().min(1, 'GOOGLE_ADS_CLIENT_SECRET is required'),
-  GOOGLE_ADS_REFRESH_TOKEN: z.string().min(1, 'GOOGLE_ADS_REFRESH_TOKEN is required'),
-  GOOGLE_ADS_LOGIN_CUSTOMER_ID: z
-    .string()
-    .transform((s) => s.replace(/[-\s]/g, ''))
-    .pipe(z.string().regex(/^\d{10}$/, 'GOOGLE_ADS_LOGIN_CUSTOMER_ID must be 10 digits')),
-  GOOGLE_ADS_API_VERSION: z
-    .string()
-    .regex(/^v\d+$/, 'GOOGLE_ADS_API_VERSION must look like "v25"')
-    .default('v25'),
-  /** Emergency kill switch. Read-only tools keep working when this is false. */
+  GOOGLE_ADS_AUTH_MODE: z.enum(['user', 'service_account']).optional(),
+  GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE: z.enum(['file', 'json', 'adc']).optional(),
+  GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE: Setting.optional(),
+  GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON: Setting.optional(),
+  GOOGLE_APPLICATION_CREDENTIALS: Setting.optional(),
+  GOOGLE_ADS_DEVELOPER_TOKEN: Setting.optional(),
+  GOOGLE_ADS_CLIENT_ID: Setting.optional(),
+  GOOGLE_ADS_CLIENT_SECRET: Setting.optional(),
+  GOOGLE_ADS_REFRESH_TOKEN: Setting.optional(),
+  GOOGLE_ADS_LOGIN_CUSTOMER_ID: ManagerId.optional(),
+  GOOGLE_ADS_API_VERSION: z.string().regex(/^v\d+$/).default('v25'),
   GOOGLE_ADS_MUTATIONS_ENABLED: Booleanish.default(true),
-  GOOGLE_ADS_MCP_CONFIG: z.string().min(1).optional(),
+  GOOGLE_ADS_MCP_CONFIG: Setting.optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 
-export type Env = z.infer<typeof EnvSchema>;
+type BaseEnv = z.infer<typeof EnvSchema>;
+export interface ServiceAccountKey { client_email: string; private_key: string; type: 'service_account' }
+export type Env = BaseEnv & (
+  | { GOOGLE_ADS_AUTH_MODE: 'user'; GOOGLE_ADS_CLIENT_ID: string; GOOGLE_ADS_CLIENT_SECRET: string; GOOGLE_ADS_REFRESH_TOKEN: string; GOOGLE_ADS_LOGIN_CUSTOMER_ID: string }
+  | { GOOGLE_ADS_AUTH_MODE: 'service_account'; GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE: 'file' | 'json' | 'adc'; serviceAccountKey?: ServiceAccountKey }
+);
 
 const ENV_KEYS = [
-  'GOOGLE_ADS_DEVELOPER_TOKEN',
-  'GOOGLE_ADS_CLIENT_ID',
-  'GOOGLE_ADS_CLIENT_SECRET',
-  'GOOGLE_ADS_REFRESH_TOKEN',
-  'GOOGLE_ADS_LOGIN_CUSTOMER_ID',
-  'GOOGLE_ADS_API_VERSION',
-  'GOOGLE_ADS_MUTATIONS_ENABLED',
-  'GOOGLE_ADS_MCP_CONFIG',
-  'LOG_LEVEL',
+  'GOOGLE_ADS_AUTH_MODE', 'GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE',
+  'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE', 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON',
+  'GOOGLE_APPLICATION_CREDENTIALS', 'GOOGLE_ADS_DEVELOPER_TOKEN',
+  'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN',
+  'GOOGLE_ADS_LOGIN_CUSTOMER_ID', 'GOOGLE_ADS_API_VERSION',
+  'GOOGLE_ADS_MUTATIONS_ENABLED', 'GOOGLE_ADS_MCP_CONFIG', 'LOG_LEVEL',
 ] as const;
 
 export class ConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ConfigurationError';
+  constructor(message: string) { super(message); this.name = 'ConfigurationError'; }
+}
+
+function parseKey(raw: string, setting: string): ServiceAccountKey {
+  let key: unknown;
+  try { key = JSON.parse(raw); } catch { throw new ConfigurationError(`${setting} must contain a valid service-account JSON key.`); }
+  if (key === null || typeof key !== 'object' ||
+      (key as Record<string, unknown>).type !== 'service_account' ||
+      typeof (key as Record<string, unknown>).client_email !== 'string' ||
+      !((key as Record<string, string>).client_email ?? '').trim() ||
+      typeof (key as Record<string, unknown>).private_key !== 'string' ||
+      !((key as Record<string, string>).private_key ?? '').trim()) {
+    throw new ConfigurationError(`${setting} must contain a service-account key with client_email and private_key.`);
   }
+  return key as ServiceAccountKey;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
@@ -59,11 +66,46 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   const parsed = EnvSchema.safeParse(picked);
   if (!parsed.success) {
-    // Report which variables are wrong, never their values.
-    const issues = parsed.error.issues
-      .map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`)
-      .join('\n');
-    throw new ConfigurationError(`Invalid environment configuration:\n${issues}`);
+    throw new ConfigurationError('Invalid environment configuration: ' +
+      [...new Set(parsed.error.issues.map((issue) => issue.path.join('.') || '(root)'))].join(', '));
   }
-  return parsed.data;
+  const env = parsed.data;
+  const present = (key: keyof BaseEnv): boolean => env[key] !== undefined;
+  const userKeys = ['GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN'] as const;
+  const serviceKeys = ['GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE', 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE', 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON', 'GOOGLE_APPLICATION_CREDENTIALS'] as const;
+  const mode = env.GOOGLE_ADS_AUTH_MODE;
+  if (!mode) {
+    if (!userKeys.every(present) || !present('GOOGLE_ADS_LOGIN_CUSTOMER_ID') || serviceKeys.some(present)) {
+      throw new ConfigurationError('Set GOOGLE_ADS_AUTH_MODE to select one complete credential mode.');
+    }
+    return { ...env, GOOGLE_ADS_AUTH_MODE: 'user' } as Env;
+  }
+  if (mode === 'user') {
+    const conflicts = serviceKeys.filter(present);
+    if (conflicts.length) throw new ConfigurationError(`GOOGLE_ADS_AUTH_MODE=user does not accept ${conflicts.join(', ')}.`);
+    const missing = [...userKeys, 'GOOGLE_ADS_LOGIN_CUSTOMER_ID' as const].filter((key) => !present(key));
+    if (missing.length) throw new ConfigurationError(`Missing required user settings: ${missing.join(', ')}.`);
+    return env as Env;
+  }
+  const conflicts = userKeys.filter(present);
+  if (conflicts.length) throw new ConfigurationError(`GOOGLE_ADS_AUTH_MODE=service_account does not accept ${conflicts.join(', ')}.`);
+  const selected = env.GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE;
+  if (!selected) throw new ConfigurationError('Set GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE to file, json, or adc.');
+  const forbidden = selected === 'file'
+    ? ['GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON', 'GOOGLE_APPLICATION_CREDENTIALS'] as const
+    : selected === 'json'
+      ? ['GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE', 'GOOGLE_APPLICATION_CREDENTIALS'] as const
+      : ['GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE', 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON'] as const;
+  const supplied = forbidden.filter(present);
+  if (supplied.length) throw new ConfigurationError(`GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE=${selected} does not accept ${supplied.join(', ')}.`);
+  if (selected === 'adc') return env as Env;
+  const setting = selected === 'file' ? 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE' : 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON';
+  const value = env[setting];
+  if (!value) throw new ConfigurationError(`${setting} is required.`);
+  let raw = value;
+  if (selected === 'file') {
+    try { raw = readFileSync(value, 'utf8'); }
+    catch { throw new ConfigurationError(`${setting} must name a readable service-account key file.`); }
+  }
+  return { ...env, serviceAccountKey: parseKey(raw, setting) } as Env;
 }

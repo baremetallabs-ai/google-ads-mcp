@@ -90,3 +90,18 @@ describe('logger redaction', () => {
     expect(parsed.googleAdsRequestId).toBe('req-1');
   });
 });
+
+describe('service-account log redaction', () => {
+  it('hides key and bearer material in fields and free text', () => {
+    const keyJson = '{"private_key":"PRIVATE-KEY-SENTINEL"}';
+    const { stream, lines } = capture();
+    const logger = createLogger({ destination: stream, secrets: [keyJson, 'PRIVATE-KEY-SENTINEL', 'BEARER-SENTINEL'] });
+    logger.error({
+      serviceAccountKey: { private_key: 'PRIVATE-KEY-SENTINEL' },
+      nested: { service_account_key_json: keyJson, accessToken: 'BEARER-SENTINEL' },
+      err: { message: 'failed for PRIVATE-KEY-SENTINEL and BEARER-SENTINEL' },
+    }, 'credential failure');
+    const output = lines().join('');
+    for (const secret of [keyJson, 'PRIVATE-KEY-SENTINEL', 'BEARER-SENTINEL']) expect(output).not.toContain(secret);
+  });
+});

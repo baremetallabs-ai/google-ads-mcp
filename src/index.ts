@@ -5,7 +5,8 @@ import { CustomerAllowlist } from './authorization/customer-allowlist.js';
 import { CapabilityRegistry } from './capabilities/registry.js';
 import { ConfigurationError, loadEnv } from './config/env.js';
 import { loadConfig } from './config/load-config.js';
-import { OAuth2RefreshTokenProvider } from './google-ads/auth.js';
+import { createTokenProvider } from './google-ads/auth.js';
+import { GoogleAdsApiError } from './errors/tool-errors.js';
 import { GoogleAdsRestClient } from './google-ads/client.js';
 import { createMcpServer } from './mcp/server.js';
 import type { Deps } from './types/index.js';
@@ -21,21 +22,30 @@ async function main(): Promise<void> {
       env.GOOGLE_ADS_DEVELOPER_TOKEN,
       env.GOOGLE_ADS_CLIENT_SECRET,
       env.GOOGLE_ADS_REFRESH_TOKEN,
+      env.GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON,
+      env.GOOGLE_ADS_AUTH_MODE === 'service_account' ? env.serviceAccountKey?.private_key : undefined,
     ],
   });
 
   const registry = new CapabilityRegistry(config, env.GOOGLE_ADS_MUTATIONS_ENABLED);
   const allowlist = new CustomerAllowlist(config.accounts.allowedCustomerIds);
 
+  let tokenProvider;
+  try {
+    tokenProvider = createTokenProvider(env);
+    await tokenProvider.getAccessToken();
+  } catch (err) {
+    throw new ConfigurationError(
+      err instanceof GoogleAdsApiError ? err.message
+        : 'Google Ads credentials could not be obtained. Check the selected authentication settings.',
+    );
+  }
+
   const transport = new GoogleAdsRestClient({
     apiVersion: env.GOOGLE_ADS_API_VERSION,
     developerToken: env.GOOGLE_ADS_DEVELOPER_TOKEN,
     loginCustomerId: env.GOOGLE_ADS_LOGIN_CUSTOMER_ID,
-    tokenProvider: new OAuth2RefreshTokenProvider({
-      clientId: env.GOOGLE_ADS_CLIENT_ID,
-      clientSecret: env.GOOGLE_ADS_CLIENT_SECRET,
-      refreshToken: env.GOOGLE_ADS_REFRESH_TOKEN,
-    }),
+    tokenProvider,
     defaultTimeoutMs: config.reads.requestTimeoutMs,
     maxPages: config.reads.maxPages,
     logger,
@@ -82,7 +92,7 @@ main().catch((err: unknown) => {
     process.exit(78); // EX_CONFIG
   }
   process.stderr.write(
-    `google-ads-mcp failed to start: ${err instanceof Error ? err.message : String(err)}\n`,
+    'google-ads-mcp failed to start unexpectedly.\n',
   );
   process.exit(1);
 });

@@ -192,6 +192,7 @@ describe('audit events', () => {
     expect(all).not.toContain('test-developer-token-value');
     expect(all).not.toContain('test-access-token');
     expect(all).not.toContain('Bearer ');
+    expect(all).not.toContain('PRIVATE-KEY-SENTINEL');
   });
 
   it('records the suppression report at startup', async () => {
