@@ -5,7 +5,7 @@ import { createAuditLogger, createLogger, type AuditEvent } from '../../src/audi
 import { CustomerAllowlist } from '../../src/authorization/customer-allowlist.js';
 import { CapabilityRegistry } from '../../src/capabilities/registry.js';
 import type { AppConfig } from '../../src/capabilities/schema.js';
-import { StaticAccessTokenProvider } from '../../src/google-ads/auth.js';
+import { StaticAccessTokenProvider, type AccessTokenProvider } from '../../src/google-ads/auth.js';
 import { GoogleAdsRestClient } from '../../src/google-ads/client.js';
 import { createMcpServer } from '../../src/mcp/server.js';
 import type { Deps } from '../../src/types/index.js';
@@ -33,6 +33,9 @@ export async function buildTestServer(
     transport?: Partial<Deps['transport']>;
     /** Route HTTP through a GoogleAdsMock. See GoogleAdsMock.fetchImpl. */
     fetchImpl?: typeof fetch;
+    developerToken?: string | null;
+    loginCustomerId?: string | null;
+    tokenProvider?: AccessTokenProvider;
   } = {},
 ): Promise<TestHarness> {
   const config = buildConfig(options.config);
@@ -58,9 +61,9 @@ export async function buildTestServer(
 
   const realTransport = new GoogleAdsRestClient({
     apiVersion: API_VERSION,
-    developerToken: TEST_DEVELOPER_TOKEN,
-    loginCustomerId: TEST_LOGIN_CUSTOMER_ID,
-    tokenProvider: new StaticAccessTokenProvider('test-access-token'),
+    ...(options.developerToken !== null && { developerToken: options.developerToken ?? TEST_DEVELOPER_TOKEN }),
+    ...(options.loginCustomerId !== null && { loginCustomerId: options.loginCustomerId ?? TEST_LOGIN_CUSTOMER_ID }),
+    tokenProvider: options.tokenProvider ?? new StaticAccessTokenProvider('test-access-token'),
     logger,
     maxPages: config.reads.maxPages,
     ...(options.fetchImpl !== undefined && { fetchImpl: options.fetchImpl }),

@@ -118,6 +118,7 @@ export interface MapErrorInput {
   requestId?: string;
   validateOnly: boolean;
   retryAfterSeconds?: number;
+  managerConfigured?: boolean;
 }
 
 /**
@@ -158,11 +159,10 @@ export function mapGoogleAdsHttpError(input: MapErrorInput): ToolError {
 
   if (httpStatus === 401 || httpStatus === 403) {
     return new GoogleAdsApiError(
-      summarize(
-        errors,
-        'Google Ads rejected the credentials or the developer token lacks access to this account.',
-      ),
-      base,
+      'Google Ads API rejected account access. Check the service account or user access on the target account, ' +
+        'its Read only versus Standard role for this operation.' +
+        (input.managerConfigured ? ' Check the manager account link and access.' : ''),
+      { ...(requestId !== undefined && { googleAdsRequestId: requestId }), httpStatus },
     );
   }
 

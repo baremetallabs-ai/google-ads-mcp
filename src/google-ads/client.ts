@@ -22,8 +22,8 @@ import type {
 
 export interface GoogleAdsRestClientOptions {
   apiVersion: string;
-  developerToken: string;
-  loginCustomerId: string;
+  developerToken?: string;
+  loginCustomerId?: string;
   tokenProvider: AccessTokenProvider;
   defaultTimeoutMs?: number;
   maxPages?: number;
@@ -69,10 +69,10 @@ export class GoogleAdsRestClient implements GoogleAdsTransport {
     const token = await this.options.tokenProvider.getAccessToken();
     const headers: Record<string, string> = {
       authorization: `Bearer ${token}`,
-      'developer-token': this.options.developerToken,
       'content-type': 'application/json',
     };
-    if (includeLoginCustomerId) {
+    if (this.options.developerToken) headers['developer-token'] = this.options.developerToken;
+    if (includeLoginCustomerId && this.options.loginCustomerId) {
       headers['login-customer-id'] = this.options.loginCustomerId;
     }
     return headers;
@@ -171,6 +171,7 @@ export class GoogleAdsRestClient implements GoogleAdsTransport {
         body: parsed,
         ...(meta.requestId !== undefined && { requestId: meta.requestId }),
         validateOnly: args.validateOnly ?? false,
+        managerConfigured: !!this.options.loginCustomerId,
         ...(retryAfter !== null && { retryAfterSeconds: Number(retryAfter) || undefined }),
       });
 
