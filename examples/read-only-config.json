@@ -2,21 +2,29 @@
   "$comment": [
     "The same server with the mutation kill switch engaged. Every mutation tool is",
     "absent from tools/list; the fifteen read tools continue to work. Useful for a",
-    "reporting-only client, or as a safe default while credentials are being proven."
+    "reporting-only client, or as a safe default while credentials are being proven.",
+    "",
+    "For inline JSON select source=json and set GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON instead.",
+    "For keyless service-account ADC select source=adc; GOOGLE_APPLICATION_CREDENTIALS is optional.",
+    "A manager ID and deprecated developer token are optional in service-account mode.",
+    "Create gitignored config/capabilities.local.yaml from config/capabilities.example.yaml.",
+    "Start with version: 1 and accounts.allowedCustomerIds as ten-digit operator customer IDs.",
+    "Use reads.defaultRowLimit: 100, maxRowLimit: 1000, requestTimeoutMs: 30000, maxPages: 20.",
+    "Set mutations.enabled: true and mutations.default: deny; enable only chosen mutations.tools."
   ],
   "mcpServers": {
     "google-ads-readonly": {
       "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/to/google-ads-mcp/dist/index.js"],
+      "args": [
+        "/absolute/path/to/google-ads-mcp/dist/index.js"
+      ],
       "env": {
-        "GOOGLE_ADS_DEVELOPER_TOKEN": "your-developer-token",
-        "GOOGLE_ADS_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
-        "GOOGLE_ADS_CLIENT_SECRET": "your-client-secret",
-        "GOOGLE_ADS_REFRESH_TOKEN": "your-refresh-token",
-        "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "1234567890",
         "GOOGLE_ADS_MCP_CONFIG": "/absolute/path/to/google-ads-mcp/config/capabilities.local.yaml",
-        "GOOGLE_ADS_MUTATIONS_ENABLED": "false"
+        "GOOGLE_ADS_MUTATIONS_ENABLED": "false",
+        "GOOGLE_ADS_AUTH_MODE": "service_account",
+        "GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE": "file",
+        "GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE": "/absolute/path/to/service-account-key.json"
       }
     }
   }

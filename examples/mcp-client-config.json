@@ -6,15 +6,21 @@
     "",
     "Place the contents of `mcpServers` into your client's MCP configuration file.",
     "Credentials come from the environment; mint a refresh token with",
-    "`npm run get-refresh-token`."
+    "`npm run get-refresh-token`.",
+    "",
+    "Create gitignored config/capabilities.local.yaml from config/capabilities.example.yaml.",
+    "Start with version: 1 and accounts.allowedCustomerIds as ten-digit operator customer IDs.",
+    "Use reads.defaultRowLimit: 100, maxRowLimit: 1000, requestTimeoutMs: 30000, maxPages: 20.",
+    "Set mutations.enabled: true and mutations.default: deny; enable only chosen mutations.tools."
   ],
   "mcpServers": {
     "google-ads": {
       "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/to/google-ads-mcp/dist/index.js"],
+      "args": [
+        "/absolute/path/to/google-ads-mcp/dist/index.js"
+      ],
       "env": {
-        "GOOGLE_ADS_DEVELOPER_TOKEN": "your-developer-token",
         "GOOGLE_ADS_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
         "GOOGLE_ADS_CLIENT_SECRET": "your-client-secret",
         "GOOGLE_ADS_REFRESH_TOKEN": "your-refresh-token",
