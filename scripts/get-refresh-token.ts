@@ -2,7 +2,7 @@
  * One-time helper to mint a Google Ads refresh token.
  *
  * Runs the installed-app OAuth loopback flow against a Desktop OAuth client and
- * prints the three environment values the server needs. It is not part of the
+ * prints the three OAuth environment values required by user mode. It is not part of the
  * server: the server itself only ever reads credentials from the environment.
  *
  *   npm run get-refresh-token -- --client-secret ~/client_secret.json

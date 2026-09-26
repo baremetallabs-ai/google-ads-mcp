@@ -143,47 +143,70 @@ current-state checks, and Google Ads validation.
 
 ## Google Ads authentication
 
-OAuth2 with a long-lived refresh token. There is no service-account path in this
-version.
+The server supports user OAuth credentials and direct service-account credentials. Both
+modes request only the Google Ads scope (https://www.googleapis.com/auth/adwords).
+Access tokens are cached before expiry, and concurrent refreshes share one request.
+Startup obtains a token before the stdio server connects. Developer tokens are
+deprecated and optional in both modes. A supplied token is sent for compatibility;
+otherwise the developer-token header is omitted.
 
-| Variable | Purpose |
-|---|---|
-| `GOOGLE_ADS_DEVELOPER_TOKEN` | From the API Center on your manager account |
-| `GOOGLE_ADS_CLIENT_ID` | Desktop OAuth client ID |
-| `GOOGLE_ADS_CLIENT_SECRET` | Desktop OAuth client secret |
-| `GOOGLE_ADS_REFRESH_TOKEN` | Refresh token with the `adwords` scope |
-| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Manager account, sent as `login-customer-id` |
+A complete existing user setup with GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET,
+GOOGLE_ADS_REFRESH_TOKEN, and GOOGLE_ADS_LOGIN_CUSTOMER_ID selects user mode without
+GOOGLE_ADS_AUTH_MODE. You may set GOOGLE_ADS_AUTH_MODE=user explicitly. User mode
+always requires all three OAuth settings and a manager customer ID. A partial or
+mixed mode-free setup requires explicit mode selection. Explicit modes reject
+settings from the other mode.
 
-### Minting a refresh token
+For direct service-account access, set GOOGLE_ADS_AUTH_MODE=service_account and
+select exactly one credential source with GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE:
 
-```bash
+| Source | Required setting | Meaning |
+|---|---|---|
+| file | GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE | Readable service-account JSON key path |
+| json | GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON | Inline service-account JSON key |
+| adc | Application default credentials | Attached or impersonated service account |
+
+For ADC, GOOGLE_APPLICATION_CREDENTIALS may name an explicit ADC file. Ambient ADC
+files or metadata are considered only when adc is selected. Individual-user ADC
+and federation without a service-account impersonation target are rejected.
+Do not supply both key forms or credentials for an unselected source. Keep keys and
+inline JSON out of logs and committed files.
+
+Add the service account as a Google Ads user on the target advertiser account.
+It can access that account directly without Google Ads user delegation or a manager
+ID. GOOGLE_ADS_LOGIN_CUSTOMER_ID is optional for service accounts; set it to a
+linked manager account when manager routing is needed. User mode always routes
+through its configured manager. The service account's Google Ads role governs
+access: Read only permits reads, while Standard is needed for writes. On an
+authorization failure, check target-account membership and role, and the manager
+link if configured. The account allowlist still applies in either mode.
+
+### Minting a refresh token for user mode
+
+~~~bash
 npm run get-refresh-token -- --client-secret ~/client_secret.json
-```
+~~~
 
-This runs the installed-app OAuth loopback flow, requests the
-`https://www.googleapis.com/auth/adwords` scope, and prints the three values to paste
-into `.env`. It is a one-time operation; the server itself never performs an
-interactive flow and only reads credentials from the environment.
+This one-time installed-app OAuth flow requests only the Ads scope and prints the
+user mode client ID, client secret, and refresh token. The server itself never
+performs an interactive flow.
 
-Access tokens are cached in memory until shortly before expiry, and concurrent refreshes
-share one in-flight request.
+### Quota project
+
+User-mode Google Ads API access uses the Cloud project that owns its OAuth client.
+Service-account access uses the service account's owning project. Billing is
+optional; no separate quota or billing project setting is required.
 
 ---
 
 ## Manager account setup
 
-The developer token belongs to a **manager (MCC) account**. Set
-`GOOGLE_ADS_LOGIN_CUSTOMER_ID` to that manager account; it is sent as the
-`login-customer-id` header on every request. Individual advertiser accounts are then
-addressed by the `customerId` tool argument, provided they are allowlisted.
-
-Customer IDs are normalized internally: `123-456-7890` and `1234567890` are the same
-account, and normalization happens before the allowlist check so a dashed ID cannot slip
-past an exact-string comparison.
-
-`list_accessible_accounts` reports which accounts the credentials can reach directly,
-but **that list is informational only**. A manager's child accounts usually do not
-appear in it. The configured allowlist is the authority.
+Use GOOGLE_ADS_LOGIN_CUSTOMER_ID for manager routing. It is required for user mode
+and optional for service-account mode. Without it, a service account accesses an
+advertiser account directly. The listAccessibleCustomers endpoint omits the manager
+header because it lists directly accessible accounts. Manager children may not
+appear there; the configured allowlist remains authoritative. Customer IDs are
+normalized before allowlist checks, so dashed and undashed forms compare equally.
 
 ---
 
@@ -198,14 +221,36 @@ accounts:
 
 The configuration shipped in `src/capabilities/default-config.yaml` carries
 **placeholder** IDs, so a fresh checkout refuses every account until you configure it —
-the intended fail-closed behaviour. Put your real allowlist in a local file and point
-the server at it:
+the intended fail-closed behaviour. Create the gitignored config/capabilities.local.yaml from the tracked example,
+then replace the placeholder IDs and point the server at it:
 
 ```bash
 cp config/capabilities.example.yaml config/capabilities.local.yaml
 $EDITOR config/capabilities.local.yaml          # your real customer IDs
 export GOOGLE_ADS_MCP_CONFIG=$PWD/config/capabilities.local.yaml
 ```
+
+The new file needs this starting structure. Copy constraints for any enabled
+mutation tools from the tracked example and enable only the tools you intend to use:
+
+~~~yaml
+version: 1
+accounts:
+  allowedCustomerIds: ['1234567890'] # replace with operator ten-digit IDs
+reads:
+  defaultRowLimit: 100
+  maxRowLimit: 1000
+  requestTimeoutMs: 30000
+  maxPages: 20
+mutations:
+  enabled: true
+  default: deny
+  tools:
+    pause_campaign:
+      enabled: true
+      maxResourcesPerCall: 1
+~~~
+
 
 `config/*.local.yaml` is gitignored, so your account IDs never enter version control.
 
@@ -612,8 +657,7 @@ read tools, and prints a one-line summary of each, followed by negative controls
 (unauthorized account, blocked GAQL resource, multi-statement GAQL). It never calls a
 mutation tool.
 
-Do this before enabling mutations. It proves credentials, the developer token's access
-to the account, the allowlist, and every GAQL query the server issues — GAQL field names
+Do this before enabling mutations. It checks configured credentials and account access, the allowlist, and every GAQL query the server issues — GAQL field names
 are the one class of bug that mocked tests cannot catch, because a mock returns whatever
 it is told to.
 
