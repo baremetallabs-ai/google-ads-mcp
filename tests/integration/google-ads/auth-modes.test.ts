@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { GoogleAdsMock } from '../../helpers/mock-google-ads.js';
 import { buildTestServer, callTool, TEST_CUSTOMER_ID, TEST_LOGIN_CUSTOMER_ID, type TestHarness } from '../../helpers/build-test-server.js';
-import { StaticAccessTokenProvider } from '../../../src/google-ads/auth.js';
+import { ServiceAccountTokenProvider, StaticAccessTokenProvider } from '../../../src/google-ads/auth.js';
 
 let harness: TestHarness | undefined;
 let mock: GoogleAdsMock | undefined;
@@ -20,7 +20,16 @@ describe('auth mode wire and MCP contract', () => {
       fetchImpl: mock.fetchImpl,
       developerToken: token === 'absent' ? null : 'developer-token',
       loginCustomerId: routing === 'direct' ? null : TEST_LOGIN_CUSTOMER_ID,
-      tokenProvider: new StaticAccessTokenProvider(mode === 'service_account' ? 'service-bearer' : 'user-bearer'),
+      tokenProvider: mode === 'service_account'
+        ? new ServiceAccountTokenProvider({
+            source: 'json',
+            key: { type: 'service_account', client_email: 'svc@example.iam.gserviceaccount.com', private_key: 'test-key' },
+            createKeyClient: () => ({
+              credentials: { expiry_date: Date.now() + 3600_000 },
+              getAccessToken: () => Promise.resolve({ token: 'service-bearer' }),
+            }) as never,
+          })
+        : new StaticAccessTokenProvider('user-bearer'),
     });
     await harness.deps.transport.search({ customerId: TEST_CUSTOMER_ID, query: 'SELECT campaign.id FROM campaign' });
     await harness.deps.transport.listAccessibleCustomers();

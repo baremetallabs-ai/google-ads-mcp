@@ -58,4 +58,21 @@ describe('authentication environment', () => {
     expect(message).toContain(name);
     for (const secret of ['CLIENT-SECRET-SENTINEL', 'REFRESH-SENTINEL', 'PRIVATE-SENTINEL', 'SECRET-SENTINEL']) expect(message).not.toContain(secret);
   });
+  it('explains invalid enums and IDs without echoing their values', () => {
+    const badMode = () => loadEnv({ ...user, GOOGLE_ADS_AUTH_MODE: 'service-account-SENTINEL' });
+    const badId = () => loadEnv({ ...user, GOOGLE_ADS_LOGIN_CUSTOMER_ID: 'BAD-ID-SENTINEL' });
+    expect(badMode)
+      .toThrow(/GOOGLE_ADS_AUTH_MODE: Invalid option: expected one of/);
+    expect(badId)
+      .toThrow(/GOOGLE_ADS_LOGIN_CUSTOMER_ID: Invalid string: must match pattern/);
+    for (const [run, sentinel] of [[badMode, 'service-account-SENTINEL'], [badId, 'BAD-ID-SENTINEL']] as const) {
+      try { run(); } catch (error) { expect((error as Error).message).not.toContain(sentinel); }
+    }
+  });
+  it('names both missing user settings and ambiguous service-account settings', () => {
+    expect(() => loadEnv({ GOOGLE_ADS_CLIENT_ID: 'CLIENT-ID-SENTINEL' }))
+      .toThrow(/Missing user settings: GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_LOGIN_CUSTOMER_ID/);
+    expect(() => loadEnv({ ...user, GOOGLE_APPLICATION_CREDENTIALS: '/SECRET-ADC-PATH' }))
+      .toThrow(/Supplied service-account settings: GOOGLE_APPLICATION_CREDENTIALS/);
+  });
 });

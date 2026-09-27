@@ -67,7 +67,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = EnvSchema.safeParse(picked);
   if (!parsed.success) {
     throw new ConfigurationError('Invalid environment configuration: ' +
-      [...new Set(parsed.error.issues.map((issue) => issue.path.join('.') || '(root)'))].join(', '));
+      [...new Set(parsed.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`))].join(', '));
   }
   const env = parsed.data;
   const present = (key: keyof BaseEnv): boolean => env[key] !== undefined;
@@ -75,8 +75,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const serviceKeys = ['GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE', 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE', 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON', 'GOOGLE_APPLICATION_CREDENTIALS'] as const;
   const mode = env.GOOGLE_ADS_AUTH_MODE;
   if (!mode) {
-    if (!userKeys.every(present) || !present('GOOGLE_ADS_LOGIN_CUSTOMER_ID') || serviceKeys.some(present)) {
-      throw new ConfigurationError('Set GOOGLE_ADS_AUTH_MODE to select one complete credential mode.');
+    const missing = [...userKeys, 'GOOGLE_ADS_LOGIN_CUSTOMER_ID' as const].filter((key) => !present(key));
+    const conflicting = serviceKeys.filter(present);
+    if (missing.length || conflicting.length) {
+      throw new ConfigurationError('Set GOOGLE_ADS_AUTH_MODE to select one complete credential mode.' +
+        (missing.length ? ` Missing user settings: ${missing.join(', ')}.` : '') +
+        (conflicting.length ? ` Supplied service-account settings: ${conflicting.join(', ')}.` : ''));
     }
     return { ...env, GOOGLE_ADS_AUTH_MODE: 'user' } as Env;
   }
