@@ -158,11 +158,18 @@ export function mapGoogleAdsHttpError(input: MapErrorInput): ToolError {
   }
 
   if (httpStatus === 401 || httpStatus === 403) {
+    // Error-code enums are useful diagnostics; upstream messages and triggers may
+    // contain request data, so never include the sanitized errors array here.
+    const errorCodes = errors.map((error) => error.errorCode)
+      .filter((code) => /^[a-zA-Z][a-zA-Z0-9]*Error\.[A-Z][A-Z0-9_]*$/.test(code));
     return new GoogleAdsApiError(
-      'Google Ads API rejected account access. Check the service account or user access on the target account, ' +
-        'its Read only versus Standard role for this operation.' +
-        (input.managerConfigured ? ' Check the manager account link and access.' : ''),
-      { ...(requestId !== undefined && { googleAdsRequestId: requestId }), httpStatus },
+      httpStatus === 401
+        ? 'Google Ads rejected the access token; check the configured credentials.'
+        : 'Google Ads API rejected account access. Check the service account or user access on the target account, ' +
+          'its Read only versus Standard role for this operation.' +
+          (input.managerConfigured ? ' Check the manager account link and access.' : ''),
+      { ...(requestId !== undefined && { googleAdsRequestId: requestId }), httpStatus,
+        ...(errorCodes.length > 0 && { errorCodes }) },
     );
   }
 

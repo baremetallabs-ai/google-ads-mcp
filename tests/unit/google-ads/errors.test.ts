@@ -125,13 +125,23 @@ describe('HTTP status mapping', () => {
 
 describe('authorization failures', () => {
   it.each([401, 403])('hides upstream secrets for HTTP %i and preserves request ID', (httpStatus) => {
-    const body = { error: { message: 'MESSAGE-SENTINEL', details: [{ errors: [{ trigger: 'TRIGGER-SENTINEL', message: 'DETAIL-SENTINEL' }] }] } };
+    const body = { error: { message: 'MESSAGE-SENTINEL', details: [{ errors: [
+      { errorCode: { authorizationError: 'USER_PERMISSION_DENIED' }, trigger: 'TRIGGER-SENTINEL', message: 'DETAIL-SENTINEL' },
+      { errorCode: { authenticationError: 'NOT_ADS_USER' }, message: 'DETAIL-SENTINEL' },
+    ] }] } };
     const err = mapGoogleAdsHttpError({ httpStatus, body, validateOnly: false, requestId: 'req-safe', managerConfigured: true });
     const output = JSON.stringify(err.toEnvelope());
     expect(err.code).toBe('GOOGLE_ADS_API_ERROR');
     expect(err.details.googleAdsRequestId).toBe('req-safe');
-    expect(output).toContain('Read only versus Standard');
-    expect(output).toContain('manager account link');
+    expect(err.details.errorCodes).toEqual(['authorizationError.USER_PERMISSION_DENIED', 'authenticationError.NOT_ADS_USER']);
+    if (httpStatus === 401) {
+      expect(output).toContain('rejected the access token');
+      expect(output).not.toContain('Read only versus Standard');
+      expect(output).not.toContain('manager account link');
+    } else {
+      expect(output).toContain('Read only versus Standard');
+      expect(output).toContain('manager account link');
+    }
     for (const secret of ['MESSAGE-SENTINEL', 'TRIGGER-SENTINEL', 'DETAIL-SENTINEL']) expect(output).not.toContain(secret);
   });
   it('omits manager guidance for direct access', () => {
