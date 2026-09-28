@@ -84,8 +84,12 @@ export function loadInstallConfig(env: Env): AppConfig {
   const path = env.GOOGLE_ADS_MCP_CONFIG;
   if (!inline && !path) return baseline;
   let raw: unknown;
-  try { raw = parseYaml(inline ?? readFileSync(path!, 'utf8')); }
+  try { raw = parseYaml(inline ?? readFileSync(path ?? '', 'utf8')); }
   catch { throw new ConfigurationError(`Invalid ${inline ? 'GOOGLE_ADS_CAPABILITIES_INLINE' : 'GOOGLE_ADS_MCP_CONFIG'}; provide readable YAML or JSON capability configuration.`); }
+  if (raw !== null && typeof raw === 'object' && !Array.isArray(raw) && baseline.budgets &&
+      !Object.hasOwn(raw, 'budgets')) {
+    raw = { ...raw, budgets: baseline.budgets };
+  }
   const parsed = AppConfigSchema.safeParse(raw);
   if (!parsed.success) {
     const setting = inline ? 'GOOGLE_ADS_CAPABILITIES_INLINE' : 'GOOGLE_ADS_MCP_CONFIG';
@@ -97,9 +101,9 @@ export function loadInstallConfig(env: Env): AppConfig {
     throw new ConfigurationError('Capability accounts.allowedCustomerIds must be a nonempty subset of GOOGLE_ADS_ALLOWED_CUSTOMER_IDS.');
   }
   if (policy.budgets) {
-    if (!env.GOOGLE_ADS_MASTER_BUDGET_MICROS ||
+    if (BigInt(policy.budgets.masterBudgetMicros) <= 0n || !env.GOOGLE_ADS_MASTER_BUDGET_MICROS ||
         BigInt(policy.budgets.masterBudgetMicros) > BigInt(env.GOOGLE_ADS_MASTER_BUDGET_MICROS)) {
-      throw new ConfigurationError('Capability budgets.masterBudgetMicros must not exceed GOOGLE_ADS_MASTER_BUDGET_MICROS.');
+      throw new ConfigurationError('Capability budgets.masterBudgetMicros must be positive and not exceed GOOGLE_ADS_MASTER_BUDGET_MICROS.');
     }
   }
   assertNarrow(baseline.reads, policy.reads, 'reads');

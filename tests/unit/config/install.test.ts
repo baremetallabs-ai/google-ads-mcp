@@ -38,11 +38,15 @@ describe('effective install policy', () => {
     const result = loadInstallConfig(loadEnv({ ...install, GOOGLE_ADS_CAPABILITIES_INLINE: yaml }));
     expect(result.mutations.enabled).toBe(false);
     expect(result.mutations.tools).toEqual({});
+    const noBudgetBlock = policy();
+    delete (noBudgetBlock as { budgets?: unknown }).budgets;
+    expect(from(noBudgetBlock).budgets?.masterBudgetMicros).toBe('500000000');
   });
   it('rejects widening and contradictory settings without exposing policy values', () => {
     const cases = [
       (p: typeof base) => { p.accounts.allowedCustomerIds = ['7654321098']; },
       (p: typeof base) => { p.budgets!.masterBudgetMicros = '600000000'; },
+      (p: typeof base) => { p.budgets!.masterBudgetMicros = '0'; },
       (p: typeof base) => { p.mutations.tools.pause_ad!.maxResourcesPerCall = 11; },
       (p: typeof base) => { p.mutations.tools.update_tracking_parameters!.allowFinalUrlChanges = true; },
       (p: typeof base) => { p.reads.searchGoogleAds.blockedResources = []; },
@@ -52,6 +56,9 @@ describe('effective install policy', () => {
       const candidate = policy(); change(candidate);
       expect(() => from(candidate)).toThrow();
     }
+    const unknown = policy() as typeof base & { mutations: { tools: Record<string, unknown> } };
+    unknown.mutations.tools.raw_google_ads_mutate = { enabled: true, maxResourcesPerCall: 1 };
+    expect(() => from(unknown)).toThrow(/mutations.tools/);
     const readOnlyPolicy = policy(); readOnlyPolicy.accounts.allowedCustomerIds = ['9876543210'];
     expect(() => loadInstallConfig(loadEnv({ ...credentials, GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: '9876543210',
       GOOGLE_ADS_CAPABILITIES_INLINE: JSON.stringify(readOnlyPolicy) }))).toThrow(/GOOGLE_ADS_MASTER_BUDGET_MICROS/);

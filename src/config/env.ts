@@ -66,6 +66,9 @@ function parseKey(raw: string, setting: string): ServiceAccountKey {
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  if (source.GOOGLE_ADS_CAPABILITIES_INLINE !== undefined && source.GOOGLE_ADS_MCP_CONFIG !== undefined) {
+    throw new ConfigurationError('Set only one of GOOGLE_ADS_CAPABILITIES_INLINE or GOOGLE_ADS_MCP_CONFIG.');
+  }
   const picked: Record<string, string> = {};
   for (const key of ENV_KEYS) {
     const value = source[key];
@@ -80,9 +83,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       [...new Set(parsed.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`))].join(', '));
   }
   const env = parsed.data;
-  if (source.GOOGLE_ADS_CAPABILITIES_INLINE !== undefined && source.GOOGLE_ADS_MCP_CONFIG !== undefined) {
-    throw new ConfigurationError('Set only one of GOOGLE_ADS_CAPABILITIES_INLINE or GOOGLE_ADS_MCP_CONFIG.');
-  }
   const installing = source.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS !== undefined || source.GOOGLE_ADS_INSTALL_MODE !== undefined;
   if (installing) {
     if (!env.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS) {

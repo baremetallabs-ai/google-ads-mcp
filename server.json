@@ -1,0 +1,4033 @@
+{
+  "name": "google-ads-mcp",
+  "version": "0.1.0",
+  "description": "Private Google Ads MCP catalog entry with 15 read actions and 15 mutation actions. Read-only is the default; mutation actions remain visible but return a configuration-disabled error until mutation mode is selected.",
+  "packages": [],
+  "_meta": {
+    "ai.baremetal/agentapps": {
+      "slug": "google-ads-mcp",
+      "runtime": "process",
+      "entry": {
+        "module": "agentapps/main.mjs"
+      },
+      "state": "none",
+      "egress": [
+        "oauth2.googleapis.com:443",
+        "googleads.googleapis.com:443"
+      ],
+      "startup": {
+        "attempts": 60,
+        "intervalMs": 100
+      },
+      "limits": {
+        "memoryMb": 512,
+        "cpu": "1"
+      },
+      "idle": {
+        "reapAfterMs": 60000
+      },
+      "environmentVariables": [
+        {
+          "name": "GOOGLE_ADS_ALLOWED_CUSTOMER_IDS",
+          "description": "Required comma-separated real ten-digit advertiser customer IDs.",
+          "isSecret": false,
+          "isRequired": true,
+          "format": "string"
+        },
+        {
+          "name": "GOOGLE_ADS_INSTALL_MODE",
+          "description": "Read-only by default; mutations requires a master budget ceiling.",
+          "isSecret": false,
+          "isRequired": false,
+          "format": "string",
+          "default": "read_only",
+          "choices": [
+            "read_only",
+            "mutations"
+          ]
+        },
+        {
+          "name": "GOOGLE_ADS_MASTER_BUDGET_MICROS",
+          "description": "Positive daily configured-budget ceiling in micros; required in mutation mode.",
+          "isSecret": false,
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOOGLE_ADS_CAPABILITIES_INLINE",
+          "description": "Optional YAML or JSON capability policy that can only narrow the install.",
+          "isSecret": true,
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOOGLE_ADS_MUTATIONS_ENABLED",
+          "description": "Optional kill switch; false disables all mutations.",
+          "isSecret": false,
+          "isRequired": false,
+          "format": "string",
+          "choices": [
+            "true",
+            "false"
+          ]
+        },
+        {
+          "name": "GOOGLE_ADS_AUTH_MODE",
+          "description": "Choose service_account with inline JSON or user with OAuth refresh token.",
+          "isSecret": false,
+          "isRequired": true,
+          "format": "string",
+          "choices": [
+            "service_account",
+            "user"
+          ]
+        },
+        {
+          "name": "GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE",
+          "description": "For service accounts choose json for inline key.",
+          "isSecret": false,
+          "isRequired": false,
+          "format": "string",
+          "choices": [
+            "json"
+          ]
+        },
+        {
+          "name": "GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON",
+          "description": "Inline service-account key JSON; required when service_account/json is selected.",
+          "isSecret": true,
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOOGLE_ADS_CLIENT_ID",
+          "description": "OAuth client ID for user mode.",
+          "isSecret": true,
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOOGLE_ADS_CLIENT_SECRET",
+          "description": "OAuth client secret for user mode.",
+          "isSecret": true,
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOOGLE_ADS_REFRESH_TOKEN",
+          "description": "OAuth refresh token for user mode.",
+          "isSecret": true,
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOOGLE_ADS_DEVELOPER_TOKEN",
+          "description": "Optional Google Ads developer token.",
+          "isSecret": true,
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+          "description": "Optional manager account ID for service-account installs; required for OAuth user mode.",
+          "isSecret": false,
+          "isRequired": false,
+          "format": "string"
+        }
+      ],
+      "compatibility": {
+        "era": "modern",
+        "requiredClientCapabilities": []
+      },
+      "externalInstructions": "Install with real customer IDs and inline service-account JSON (or OAuth refresh-token settings). Read-only is the default. For mutations, set GOOGLE_ADS_INSTALL_MODE=mutations and a positive GOOGLE_ADS_MASTER_BUDGET_MICROS. All 30 actions are always listed; read-only mutation calls fail with TOOL_DISABLED. Optional inline capability YAML/JSON can only narrow permissions and limits. The eve agent handles human approval before mutations. See README for Google Ads roles and budget setup.",
+      "tools": [
+        {
+          "name": "list_accessible_accounts",
+          "description": "Lists the Google Ads accounts this server is allowed to work with. The configured allowlist is authoritative: an account absent from it cannot be reached by any tool, even if the credentials could otherwise access it.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "includeDetails": {
+                "default": true,
+                "description": "Fetch name, currency and timezone for each allowlisted account.",
+                "type": "boolean"
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "loginCustomerId": {
+                "type": "string"
+              },
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "allowlistedCount": {
+                "type": "number"
+              },
+              "directlyAccessibleCount": {
+                "type": "number"
+              },
+              "queryableCount": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_account_summary",
+          "description": "Returns account identity, campaign counts by status, and headline performance totals for a date range.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "datePreset": {
+                "description": "Named Google Ads date range. Mutually exclusive with startDate/endDate.",
+                "type": "string",
+                "enum": [
+                  "TODAY",
+                  "YESTERDAY",
+                  "LAST_7_DAYS",
+                  "LAST_14_DAYS",
+                  "LAST_30_DAYS",
+                  "THIS_MONTH",
+                  "LAST_MONTH",
+                  "THIS_WEEK_MON_TODAY",
+                  "LAST_WEEK_MON_SUN",
+                  "LAST_BUSINESS_WEEK"
+                ]
+              },
+              "startDate": {
+                "description": "Inclusive start date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "endDate": {
+                "description": "Inclusive end date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "descriptiveName": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "currencyCode": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timeZone": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "manager": {
+                "type": "boolean"
+              },
+              "testAccount": {
+                "type": "boolean"
+              },
+              "optimizationScore": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "dateRange": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "totals": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "campaignCounts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "list_campaigns",
+          "description": "Lists campaigns with status, channel type, bidding strategy and the budget resource each one references. Budget IDs returned here are what set_campaign_budget addresses.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "statuses": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "ENABLED",
+                    "PAUSED",
+                    "REMOVED"
+                  ]
+                }
+              },
+              "channelTypes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "SEARCH",
+                    "DISPLAY",
+                    "SHOPPING",
+                    "VIDEO",
+                    "PERFORMANCE_MAX",
+                    "MULTI_CHANNEL",
+                    "LOCAL",
+                    "SMART",
+                    "DISCOVERY",
+                    "DEMAND_GEN"
+                  ]
+                }
+              },
+              "nameContains": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "pageToken": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "campaigns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "rowCount": {
+                "type": "number"
+              },
+              "nextPageToken": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_campaign",
+          "description": "Returns full detail for a single campaign, including its budget resource, bidding strategy, network settings and tracking configuration.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "campaignId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              }
+            },
+            "required": [
+              "customerId",
+              "campaignId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "campaign": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "budget": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "adGroupCount": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_campaign_performance",
+          "description": "Campaign-level performance metrics over a date range, with optional segmentation by date, device or network. Cost values are integer micros.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "datePreset": {
+                "description": "Named Google Ads date range. Mutually exclusive with startDate/endDate.",
+                "type": "string",
+                "enum": [
+                  "TODAY",
+                  "YESTERDAY",
+                  "LAST_7_DAYS",
+                  "LAST_14_DAYS",
+                  "LAST_30_DAYS",
+                  "THIS_MONTH",
+                  "LAST_MONTH",
+                  "THIS_WEEK_MON_TODAY",
+                  "LAST_WEEK_MON_SUN",
+                  "LAST_BUSINESS_WEEK"
+                ]
+              },
+              "startDate": {
+                "description": "Inclusive start date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "endDate": {
+                "description": "Inclusive end date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "campaignIds": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{1,19}$"
+                }
+              },
+              "segments": {
+                "maxItems": 2,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "date",
+                    "week",
+                    "month",
+                    "device",
+                    "network"
+                  ]
+                }
+              },
+              "orderBy": {
+                "type": "string",
+                "enum": [
+                  "cost",
+                  "clicks",
+                  "impressions",
+                  "conversions",
+                  "ctr"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "pageToken": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "dateRange": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "segments": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "totals": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "rowCount": {
+                "type": "number"
+              },
+              "nextPageToken": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_ad_group_performance",
+          "description": "Ad-group-level performance metrics over a date range, with optional segmentation. Cost values are integer micros.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "datePreset": {
+                "description": "Named Google Ads date range. Mutually exclusive with startDate/endDate.",
+                "type": "string",
+                "enum": [
+                  "TODAY",
+                  "YESTERDAY",
+                  "LAST_7_DAYS",
+                  "LAST_14_DAYS",
+                  "LAST_30_DAYS",
+                  "THIS_MONTH",
+                  "LAST_MONTH",
+                  "THIS_WEEK_MON_TODAY",
+                  "LAST_WEEK_MON_SUN",
+                  "LAST_BUSINESS_WEEK"
+                ]
+              },
+              "startDate": {
+                "description": "Inclusive start date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "endDate": {
+                "description": "Inclusive end date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "campaignIds": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{1,19}$"
+                }
+              },
+              "adGroupIds": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{1,19}$"
+                }
+              },
+              "segments": {
+                "maxItems": 2,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "date",
+                    "week",
+                    "month",
+                    "device",
+                    "network"
+                  ]
+                }
+              },
+              "orderBy": {
+                "type": "string",
+                "enum": [
+                  "cost",
+                  "clicks",
+                  "impressions",
+                  "conversions",
+                  "ctr"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "pageToken": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "dateRange": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "segments": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "totals": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "rowCount": {
+                "type": "number"
+              },
+              "nextPageToken": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_keyword_performance",
+          "description": "Performance for bidding keywords over a date range. Returns each criterion resource name so pause_keyword or enable_keyword can be called without a further lookup. Negative keywords are not included; use list_negative_keywords for those.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "datePreset": {
+                "description": "Named Google Ads date range. Mutually exclusive with startDate/endDate.",
+                "type": "string",
+                "enum": [
+                  "TODAY",
+                  "YESTERDAY",
+                  "LAST_7_DAYS",
+                  "LAST_14_DAYS",
+                  "LAST_30_DAYS",
+                  "THIS_MONTH",
+                  "LAST_MONTH",
+                  "THIS_WEEK_MON_TODAY",
+                  "LAST_WEEK_MON_SUN",
+                  "LAST_BUSINESS_WEEK"
+                ]
+              },
+              "startDate": {
+                "description": "Inclusive start date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "endDate": {
+                "description": "Inclusive end date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "campaignIds": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{1,19}$"
+                }
+              },
+              "adGroupIds": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{1,19}$"
+                }
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "pageToken": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "dateRange": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "totals": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "rowCount": {
+                "type": "number"
+              },
+              "nextPageToken": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_search_terms",
+          "description": "The queries people actually typed that triggered ads, with their metrics and whether each is already added or excluded. This is the input for add_negative_keyword decisions.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "datePreset": {
+                "description": "Named Google Ads date range. Mutually exclusive with startDate/endDate.",
+                "type": "string",
+                "enum": [
+                  "TODAY",
+                  "YESTERDAY",
+                  "LAST_7_DAYS",
+                  "LAST_14_DAYS",
+                  "LAST_30_DAYS",
+                  "THIS_MONTH",
+                  "LAST_MONTH",
+                  "THIS_WEEK_MON_TODAY",
+                  "LAST_WEEK_MON_SUN",
+                  "LAST_BUSINESS_WEEK"
+                ]
+              },
+              "startDate": {
+                "description": "Inclusive start date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "endDate": {
+                "description": "Inclusive end date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "campaignIds": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{1,19}$"
+                }
+              },
+              "adGroupIds": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{1,19}$"
+                }
+              },
+              "textContains": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "pageToken": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "dateRange": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "totals": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "rowCount": {
+                "type": "number"
+              },
+              "nextPageToken": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "list_negative_keywords",
+          "description": "Lists campaign-level and ad-group-level negative keywords with their criterion resource names, which remove_negative_keyword requires. Shared negative lists are reported for visibility but this server cannot modify them.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "scope": {
+                "default": "both",
+                "type": "string",
+                "enum": [
+                  "campaign",
+                  "ad_group",
+                  "both"
+                ]
+              },
+              "campaignId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "adGroupId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "textContains": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "campaignNegatives": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "adGroupNegatives": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "sharedNegativeLists": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "sharedListNotice": {
+                "type": "string"
+              },
+              "totalCount": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "list_recommendations",
+          "description": "Lists open Google Ads recommendations with their resource names and projected impact. Resource names returned here are what dismiss_recommendation requires. This server cannot apply recommendations, only dismiss them.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "includeDismissed": {
+                "default": false,
+                "type": "boolean"
+              },
+              "types": {
+                "maxItems": 50,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]*$"
+                }
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "recommendations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "typeCounts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              "rowCount": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_conversion_actions",
+          "description": "Lists conversion actions with their status, category, counting type, attribution and lookback settings. Read-only: this server cannot create, modify or delete conversion actions.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "includeMetrics": {
+                "default": false,
+                "type": "boolean"
+              },
+              "datePreset": {
+                "description": "Named Google Ads date range. Mutually exclusive with startDate/endDate.",
+                "type": "string",
+                "enum": [
+                  "TODAY",
+                  "YESTERDAY",
+                  "LAST_7_DAYS",
+                  "LAST_14_DAYS",
+                  "LAST_30_DAYS",
+                  "THIS_MONTH",
+                  "LAST_MONTH",
+                  "THIS_WEEK_MON_TODAY",
+                  "LAST_WEEK_MON_SUN",
+                  "LAST_BUSINESS_WEEK"
+                ]
+              },
+              "startDate": {
+                "description": "Inclusive start date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "endDate": {
+                "description": "Inclusive end date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "includeRemoved": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "conversionActions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "primaryForGoalCount": {
+                "type": "number"
+              },
+              "rowCount": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_bidding_strategy_status",
+          "description": "Reports each campaign bidding strategy, its system status and targets, plus any portfolio (shared) bidding strategies. Read-only: this server does not change bidding strategies, and a portfolio strategy is a shared resource it will not mutate.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "campaigns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "portfolioStrategies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "sharedStrategyNotice": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_budget_pacing",
+          "description": "Reports every distinct campaign budget resource in the account, the account's current total across those distinct budgets, the configured master budget, and the remaining headroom. Use this to plan a set_campaign_budget call without having to attempt one and be rejected. Each budget also reports whether this server is able to mutate it.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "datePreset": {
+                "description": "Named Google Ads date range. Mutually exclusive with startDate/endDate.",
+                "type": "string",
+                "enum": [
+                  "TODAY",
+                  "YESTERDAY",
+                  "LAST_7_DAYS",
+                  "LAST_14_DAYS",
+                  "LAST_30_DAYS",
+                  "THIS_MONTH",
+                  "LAST_MONTH",
+                  "THIS_WEEK_MON_TODAY",
+                  "LAST_WEEK_MON_SUN",
+                  "LAST_BUSINESS_WEEK"
+                ]
+              },
+              "startDate": {
+                "description": "Inclusive start date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "endDate": {
+                "description": "Inclusive end date, YYYY-MM-DD.",
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "includeSpend": {
+                "default": true,
+                "description": "Include period-to-date spend per budget.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "currencyCode": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "masterBudgetMicros": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "currentTotalMicros": {
+                "type": "string"
+              },
+              "headroomMicros": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "overMaster": {
+                "type": "boolean"
+              },
+              "distinctBudgetCount": {
+                "type": "number"
+              },
+              "referencingCampaignCount": {
+                "type": "number"
+              },
+              "budgets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_change_history",
+          "description": "Lists recent changes to campaigns, ad groups, ads and criteria, including who made them and which fields changed. Google only retains 30 days of change history and requires a window no longer than 30 days within that period.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "startDate": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "endDate": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "campaignIds": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{1,19}$"
+                }
+              },
+              "resourceTypes": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]*$"
+                }
+              },
+              "limit": {
+                "default": 200,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "includeResourcePayloads": {
+                "default": false,
+                "description": "Include old/new resource bodies. These can contain full ad copy.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "customerId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "window": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "changes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "rowCount": {
+                "type": "number"
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "search_google_ads",
+          "description": "Runs a single read-only Google Ads Query Language SELECT statement against an authorized account and returns the raw rows. Only SELECT is permitted; multiple statements, comments and non-reporting resources such as billing and user access are rejected. The account is fixed by the customerId argument and cannot be changed by the query text. A row limit and a request timeout are enforced.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "query": {
+                "type": "string",
+                "minLength": 10,
+                "maxLength": 8000,
+                "description": "A single GAQL SELECT statement."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "pageToken": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "customerId",
+              "query"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string"
+              },
+              "appliedQuery": {
+                "type": "string"
+              },
+              "resource": {
+                "type": "string"
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "fieldMask": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "rowCount": {
+                "type": "number"
+              },
+              "nextPageToken": {
+                "type": "string"
+              },
+              "totalResultsCount": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "pause_campaign",
+          "description": "Sets a campaign's status to PAUSED. The campaign immediately stops serving ads and stops accruing spend; its budget, ad groups, keywords and ads are left untouched and it can be re-enabled with enable_campaign. If the campaign is already paused this returns a successful no-op without calling Google Ads.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "campaignId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "expectedCurrentStatus": {
+                "description": "Optional optimistic concurrency check. If supplied and the resource is no longer in this state, the call is rejected with STALE_RESOURCE_STATE.",
+                "type": "string",
+                "enum": [
+                  "ENABLED",
+                  "PAUSED"
+                ]
+              }
+            },
+            "required": [
+              "customerId",
+              "campaignId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "resourceName": {
+                "type": "string"
+              },
+              "before": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "after": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "enable_campaign",
+          "description": "Sets a campaign's status to ENABLED. The campaign resumes serving ads and will begin accruing spend against its budget. Removed campaigns are rejected rather than enabled. If the campaign is already enabled this returns a successful no-op.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "campaignId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "expectedCurrentStatus": {
+                "description": "Optional optimistic concurrency check. If supplied and the resource is no longer in this state, the call is rejected with STALE_RESOURCE_STATE.",
+                "type": "string",
+                "enum": [
+                  "ENABLED",
+                  "PAUSED"
+                ]
+              }
+            },
+            "required": [
+              "customerId",
+              "campaignId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "resourceName": {
+                "type": "string"
+              },
+              "before": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "after": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "pause_ad_group",
+          "description": "Sets an ad group's status to PAUSED. Its ads stop serving and stop accruing spend; the rest of the campaign is unaffected. Already-paused ad groups return a successful no-op.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "adGroupId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "expectedCurrentStatus": {
+                "description": "Optional optimistic concurrency check. If supplied and the resource is no longer in this state, the call is rejected with STALE_RESOURCE_STATE.",
+                "type": "string",
+                "enum": [
+                  "ENABLED",
+                  "PAUSED"
+                ]
+              }
+            },
+            "required": [
+              "customerId",
+              "adGroupId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "resourceName": {
+                "type": "string"
+              },
+              "before": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "after": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "enable_ad_group",
+          "description": "Sets an ad group's status to ENABLED, allowing its ads to serve and accrue spend. If the parent campaign is paused the ad group still will not serve, and the result says so. Already-enabled ad groups return a successful no-op.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "adGroupId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "expectedCurrentStatus": {
+                "description": "Optional optimistic concurrency check. If supplied and the resource is no longer in this state, the call is rejected with STALE_RESOURCE_STATE.",
+                "type": "string",
+                "enum": [
+                  "ENABLED",
+                  "PAUSED"
+                ]
+              }
+            },
+            "required": [
+              "customerId",
+              "adGroupId"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "resourceName": {
+                "type": "string"
+              },
+              "before": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "after": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "pause_ad",
+          "description": "Sets one or more ads to PAUSED so they stop serving. Ads already paused are skipped and reported as unchanged. All operations succeed or all fail together: partial success is disabled, so one invalid ad rejects the whole batch.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "ads": {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "adGroupId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "adId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "expectedCurrentStatus": {
+                      "type": "string",
+                      "enum": [
+                        "ENABLED",
+                        "PAUSED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "adGroupId",
+                    "adId"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Up to 100 items. All succeed or all fail: partial success is disabled."
+              }
+            },
+            "required": [
+              "customerId",
+              "ads"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requested": {
+                "type": "number"
+              },
+              "changedCount": {
+                "type": "number"
+              },
+              "unchangedCount": {
+                "type": "number"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "enable_ad",
+          "description": "Sets one or more ads to ENABLED so they can serve and accrue spend. Ads already enabled are skipped. All operations succeed or all fail together.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "ads": {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "adGroupId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "adId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "expectedCurrentStatus": {
+                      "type": "string",
+                      "enum": [
+                        "ENABLED",
+                        "PAUSED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "adGroupId",
+                    "adId"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Up to 100 items. All succeed or all fail: partial success is disabled."
+              }
+            },
+            "required": [
+              "customerId",
+              "ads"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requested": {
+                "type": "number"
+              },
+              "changedCount": {
+                "type": "number"
+              },
+              "unchangedCount": {
+                "type": "number"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "pause_keyword",
+          "description": "Sets one or more bidding keywords to PAUSED so they stop triggering ads and stop accruing spend. Negative keywords are rejected: they have no status. All operations succeed or all fail together.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "keywords": {
+                "minItems": 1,
+                "maxItems": 1000,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "adGroupId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "criterionId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "expectedCurrentStatus": {
+                      "type": "string",
+                      "enum": [
+                        "ENABLED",
+                        "PAUSED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "adGroupId",
+                    "criterionId"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Up to 1000 items. All succeed or all fail: partial success is disabled."
+              }
+            },
+            "required": [
+              "customerId",
+              "keywords"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requested": {
+                "type": "number"
+              },
+              "changedCount": {
+                "type": "number"
+              },
+              "unchangedCount": {
+                "type": "number"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "enable_keyword",
+          "description": "Sets one or more bidding keywords to ENABLED so they can trigger ads and accrue spend. Negative keywords are rejected. All operations succeed or all fail together.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "keywords": {
+                "minItems": 1,
+                "maxItems": 1000,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "adGroupId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "criterionId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "expectedCurrentStatus": {
+                      "type": "string",
+                      "enum": [
+                        "ENABLED",
+                        "PAUSED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "adGroupId",
+                    "criterionId"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Up to 1000 items. All succeed or all fail: partial success is disabled."
+              }
+            },
+            "required": [
+              "customerId",
+              "keywords"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requested": {
+                "type": "number"
+              },
+              "changedCount": {
+                "type": "number"
+              },
+              "unchangedCount": {
+                "type": "number"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "add_negative_keyword",
+          "description": "Adds negative keywords to exactly one campaign or one ad group, preventing ads from showing for matching searches. This reduces reach and can reduce spend. Keywords that already exist at that scope are reported as existing rather than duplicated. All operations succeed or all fail together. Shared negative keyword lists are not supported.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "campaignId": {
+                "description": "Target campaign. Supply exactly one of campaignId or adGroupId.",
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "adGroupId": {
+                "description": "Target ad group. Supply exactly one of campaignId or adGroupId.",
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "keywords": {
+                "minItems": 1,
+                "maxItems": 1000,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "matchType": {
+                      "type": "string",
+                      "enum": [
+                        "EXACT",
+                        "PHRASE",
+                        "BROAD"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "matchType"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "customerId",
+              "keywords"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "scope": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "createdCount": {
+                "type": "number"
+              },
+              "duplicateCount": {
+                "type": "number"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "remove_negative_keyword",
+          "description": "Removes negative keywords, allowing ads to show again for matching searches. This can increase reach and spend. Each criterion must be identified concretely by resource name or by scope plus criterion ID; removal by text alone is refused when more than one criterion matches. A criterion that no longer exists is reported as not found rather than failing the call.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "criteria": {
+                "minItems": 1,
+                "maxItems": 1000,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "resourceName": {
+                      "type": "string",
+                      "pattern": "^customers\\/\\d{10}\\/(campaignCriteria|adGroupCriteria)\\/\\d+~\\d+$"
+                    },
+                    "scope": {
+                      "type": "string",
+                      "enum": [
+                        "campaign",
+                        "ad_group"
+                      ]
+                    },
+                    "scopeId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "criterionId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,19}$"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "matchType": {
+                      "type": "string",
+                      "enum": [
+                        "EXACT",
+                        "PHRASE",
+                        "BROAD"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "customerId",
+              "criteria"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "removedCount": {
+                "type": "number"
+              },
+              "notFoundCount": {
+                "type": "number"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "create_paused_ad",
+          "description": "Creates one or more responsive search ads in an ad group. Created ads are always PAUSED and will not serve or accrue spend until enable_ad is called on them; there is no way to create an enabled ad through this tool. Google Ads policy review still applies, and policy findings are returned in the result. All operations succeed or all fail together.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "adGroupId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "ads": {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "finalUrls": {
+                      "minItems": 1,
+                      "maxItems": 4,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 2048
+                      }
+                    },
+                    "headlines": {
+                      "minItems": 3,
+                      "maxItems": 15,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 30
+                          },
+                          "pinnedField": {
+                            "type": "string",
+                            "enum": [
+                              "HEADLINE_1",
+                              "HEADLINE_2",
+                              "HEADLINE_3"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "text"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "descriptions": {
+                      "minItems": 2,
+                      "maxItems": 4,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 90
+                          },
+                          "pinnedField": {
+                            "type": "string",
+                            "enum": [
+                              "DESCRIPTION_1",
+                              "DESCRIPTION_2"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "text"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "path1": {
+                      "type": "string",
+                      "maxLength": 15
+                    },
+                    "path2": {
+                      "type": "string",
+                      "maxLength": 15
+                    },
+                    "trackingUrlTemplate": {
+                      "type": "string",
+                      "maxLength": 2048
+                    },
+                    "finalUrlSuffix": {
+                      "type": "string",
+                      "maxLength": 2048
+                    },
+                    "urlCustomParameters": {
+                      "maxItems": 8,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "pattern": "^\\w{1,16}$"
+                          },
+                          "value": {
+                            "type": "string",
+                            "maxLength": 250
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "finalUrls",
+                    "headlines",
+                    "descriptions"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "customerId",
+              "adGroupId",
+              "ads"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "adGroupId": {
+                "type": "string"
+              },
+              "createdCount": {
+                "type": "number"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "create_paused_keyword",
+          "description": "Adds one or more bidding keywords to an ad group. Created keywords are always PAUSED and will not trigger ads or accrue spend until enable_keyword is called on them; there is no way to create an enabled keyword through this tool. Keywords that already exist in the ad group are reported as existing rather than duplicated.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "adGroupId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "keywords": {
+                "minItems": 1,
+                "maxItems": 1000,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "matchType": {
+                      "type": "string",
+                      "enum": [
+                        "EXACT",
+                        "PHRASE",
+                        "BROAD"
+                      ]
+                    },
+                    "cpcBidMicros": {
+                      "type": "string",
+                      "pattern": "^(?:0|[1-9]\\d{0,18})$"
+                    },
+                    "finalUrls": {
+                      "maxItems": 4,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 2048
+                      }
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "matchType"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "customerId",
+              "adGroupId",
+              "keywords"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "adGroupId": {
+                "type": "string"
+              },
+              "createdCount": {
+                "type": "number"
+              },
+              "duplicateCount": {
+                "type": "number"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "dismiss_recommendation",
+          "description": "Dismisses one or more Google Ads recommendations so they stop appearing. Dismissing a recommendation does not change any campaign setting and does not affect spend; it only hides the suggestion. This server cannot apply recommendations, only dismiss them. Note that the Google Ads dismiss endpoint offers no validate-only mode, so unlike other mutation tools this one cannot pre-validate before executing.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "recommendationResourceNames": {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^customers\\/\\d{10}\\/recommendations\\/[A-Za-z0-9_-]+$"
+                },
+                "description": "Full recommendation resource names, as returned by list_recommendations."
+              }
+            },
+            "required": [
+              "customerId",
+              "recommendationResourceNames"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "dismissedCount": {
+                "type": "number"
+              },
+              "alreadyDismissedCount": {
+                "type": "number"
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "validateOnlySupported": {
+                "type": "boolean"
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "update_tracking_parameters",
+          "description": "Updates click-tracking configuration on a campaign, ad group or ad: the tracking URL template, the final URL suffix and custom URL parameters. This changes how clicks are tracked and attributed, and a malformed template can break click-throughs. When final URL changes are disabled in configuration, any request that would alter the effective destination is rejected.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "entityType": {
+                "type": "string",
+                "enum": [
+                  "campaign",
+                  "ad_group",
+                  "ad"
+                ]
+              },
+              "campaignId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "adGroupId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "adId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$"
+              },
+              "trackingUrlTemplate": {
+                "description": "Tracking template. Pass null to clear it.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "finalUrlSuffix": {
+                "description": "Query parameters appended to the final URL. Pass null to clear.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "urlCustomParameters": {
+                "maxItems": 8,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^\\w{1,16}$"
+                    },
+                    "value": {
+                      "type": "string",
+                      "maxLength": 250
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "finalUrls": {
+                "minItems": 1,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 2048
+                }
+              },
+              "expectedCurrentTrackingTemplate": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "expectedCurrentFinalUrl": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "customerId",
+              "entityType"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "resourceName": {
+                "type": "string"
+              },
+              "before": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "after": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "finalUrlChanged": {
+                "type": "boolean"
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "set_campaign_budget",
+          "description": "CHANGES AN ADVERTISING BUDGET AND MAY AFFECT CHARGES. Sets the daily amount of a Google Ads campaign budget, changing how much the account can spend each day. Increases raise potential charges; decreases lower them. The budget is addressed directly by budget ID, not through a campaign, so a budget shared by several campaigns cannot be changed by accident; explicitly shared budgets are rejected outright. The call is refused if the account's total across all distinct budgets would exceed the configured master budget. Use get_budget_pacing first to see the current total and remaining headroom.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "customerId": {
+                "type": "string",
+                "description": "Google Ads customer ID. Dashes are accepted and removed."
+              },
+              "budgetId": {
+                "type": "string",
+                "pattern": "^\\d{1,19}$",
+                "description": "The campaign budget resource ID, from list_campaigns or get_budget_pacing. This is not a campaign ID."
+              },
+              "amountMicros": {
+                "type": "string",
+                "pattern": "^(?:0|[1-9]\\d{0,18})$",
+                "description": "New daily budget in micros of the account currency. 50000000 is 50.00."
+              },
+              "expectedCurrentAmountMicros": {
+                "description": "Optional optimistic concurrency check. If supplied and the budget no longer holds this amount, the call is rejected with STALE_RESOURCE_STATE.",
+                "type": "string",
+                "pattern": "^(?:0|[1-9]\\d{0,18})$"
+              }
+            },
+            "required": [
+              "customerId",
+              "budgetId",
+              "amountMicros"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "description": "False when the call failed; see `error`.",
+                "type": "boolean"
+              },
+              "changed": {
+                "type": "boolean"
+              },
+              "customerId": {
+                "type": "string"
+              },
+              "resourceType": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "resourceName": {
+                "type": "string"
+              },
+              "before": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "after": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "referencingCampaigns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "accountTotals": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "googleAdsRequestId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "validatedOperationHash": {
+                "type": "string"
+              },
+              "error": {
+                "description": "Present only on failure. `code` is a stable machine-readable error code.",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "details": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  }
+}
