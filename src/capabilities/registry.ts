@@ -18,6 +18,7 @@ export class CapabilityRegistry {
   constructor(
     private readonly config: AppConfig,
     private readonly mutationsEnabledEnv: boolean,
+    private readonly installReadOnly = false,
   ) {}
 
   get mutationsGloballyEnabled(): boolean {
@@ -35,6 +36,7 @@ export class CapabilityRegistry {
 
   reasonFor(name: MutationToolName): ToolDisabledReason {
     if (!this.mutationsEnabledEnv) return 'kill_switch';
+    if (this.installReadOnly) return 'configuration_disabled';
     if (!this.config.mutations.enabled) return 'mutations_disabled';
     void name;
     return 'not_enabled';
@@ -43,9 +45,7 @@ export class CapabilityRegistry {
   /**
    * Re-check enablement at call time.
    *
-   * Disabled tools are never registered, so this should be unreachable in practice.
-   * It exists as defense in depth and to give the registered-but-globally-disabled
-   * path something auditable to produce.
+   * Disabled tools remain registered and are denied at call time for auditability.
    */
   assertEnabled<N extends MutationToolName>(name: N): PolicyFor<N> {
     if (!this.isEnabled(name)) {

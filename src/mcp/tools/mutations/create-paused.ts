@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   InvalidArgumentError,
+  MaxOperationsExceededError,
   ResourceNotFoundError,
   UnsupportedResourceStateError,
 } from '../../../errors/tool-errors.js';
@@ -94,7 +95,7 @@ export const createPausedAd: MutationDefinition<'create_paused_ad', CreateAdInpu
   annotations: { title: 'Create paused ads', ...ADDITIVE_ANNOTATIONS },
   responseContentType: 'RESOURCE_NAME_ONLY',
 
-  buildInputSchema: (policy) => ({
+  buildInputSchema: () => ({
     customerId: CustomerIdInput,
     adGroupId: NumericIdInput,
     // No status or enabled field exists here, and the schema is strict, so supplying
@@ -132,7 +133,7 @@ export const createPausedAd: MutationDefinition<'create_paused_ad', CreateAdInpu
         }),
       )
       .min(1)
-      .max(policy.maxResourcesPerCall),
+      .max(100),
   }),
 
   outputSchema: {
@@ -148,7 +149,10 @@ export const createPausedAd: MutationDefinition<'create_paused_ad', CreateAdInpu
     return fetchAdGroup(ctx, input.adGroupId);
   },
 
-  checkConstraints(ctx, input): void {
+  checkInputConstraints(ctx, input): void {
+    if (input.ads.length > ctx.policy.maxResourcesPerCall) {
+      throw new MaxOperationsExceededError('create_paused_ad', input.ads.length, ctx.policy.maxResourcesPerCall);
+    }
     for (const ad of input.ads) {
       if (ad.path2 !== undefined && ad.path1 === undefined) {
         throw new InvalidArgumentError('path2 requires path1 to be supplied as well.', {});
@@ -167,6 +171,8 @@ export const createPausedAd: MutationDefinition<'create_paused_ad', CreateAdInpu
       }
     }
   },
+
+  checkConstraints(): void {},
 
   detectNoOp(): null {
     // Creation is never a no-op: two identical ads are two distinct resources.
@@ -281,22 +287,20 @@ export const createPausedKeyword: MutationDefinition<
   annotations: { title: 'Create paused keywords', ...ADDITIVE_ANNOTATIONS },
   responseContentType: 'RESOURCE_NAME_ONLY',
 
-  buildInputSchema: (policy) => ({
+  buildInputSchema: () => ({
     customerId: CustomerIdInput,
     adGroupId: NumericIdInput,
     keywords: z
       .array(
         z.strictObject({
           text: z.string().min(1).max(80),
-          matchType: policy.allowedMatchTypes
-            ? z.enum(policy.allowedMatchTypes as [string, ...string[]])
-            : MatchTypeInput,
-          ...(policy.allowCpcBidOverride ? { cpcBidMicros: MicrosInput.optional() } : {}),
+          matchType: MatchTypeInput,
+          cpcBidMicros: MicrosInput.optional(),
           finalUrls: z.array(HttpsUrlInput).max(4).optional(),
         }),
       )
       .min(1)
-      .max(policy.maxResourcesPerCall),
+      .max(1000),
   }),
 
   outputSchema: {
@@ -352,7 +356,15 @@ export const createPausedKeyword: MutationDefinition<
     return { ...base, existing, toCreate, duplicates };
   },
 
-  checkConstraints(ctx, input): void {
+  checkInputConstraints(ctx, input): void {
+    if (input.keywords.length > ctx.policy.maxResourcesPerCall) {
+      throw new MaxOperationsExceededError('create_paused_keyword', input.keywords.length, ctx.policy.maxResourcesPerCall);
+    }
+    for (const kw of input.keywords) {
+      if (ctx.policy.allowedMatchTypes && !ctx.policy.allowedMatchTypes.includes(kw.matchType as 'EXACT' | 'PHRASE' | 'BROAD')) {
+        throw new InvalidArgumentError(`Match type ${kw.matchType} is not permitted by configuration.`);
+      }
+    }
     if (!ctx.policy.allowCpcBidOverride) {
       for (const kw of input.keywords) {
         if (kw.cpcBidMicros !== undefined) {
@@ -364,6 +376,8 @@ export const createPausedKeyword: MutationDefinition<
       }
     }
   },
+
+  checkConstraints(): void {},
 
   detectNoOp(ctx, input, state): Record<string, unknown> | null {
     if (state.toCreate.length > 0) return null;

@@ -62,12 +62,15 @@ export class UnauthorizedCustomerError extends ToolError {
   }
 }
 
-export type ToolDisabledReason = 'not_enabled' | 'mutations_disabled' | 'kill_switch';
+export type ToolDisabledReason = 'not_enabled' | 'mutations_disabled' | 'kill_switch' | 'configuration_disabled';
 
 export class ToolDisabledError extends ToolError {
   readonly code = 'TOOL_DISABLED' as const;
   constructor(toolName: string, reason: ToolDisabledReason) {
-    super(`Tool "${toolName}" is not enabled on this server.`, { toolName, reason });
+    super(reason === 'configuration_disabled'
+      ? 'Mutation actions are disabled by configuration for this install.'
+      : `Tool "${toolName}" is not enabled on this server.`,
+    reason === 'configuration_disabled' ? { reason } : { toolName, reason });
   }
 }
 

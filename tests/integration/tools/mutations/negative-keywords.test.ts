@@ -144,13 +144,13 @@ describe('add_negative_keyword', () => {
     expect(mock.requests).toHaveLength(0);
   });
 
-  it('enforces the configured batch maximum in the published schema', async () => {
+  it('advertises the fixed hard batch maximum', async () => {
     harness = await buildTestServer();
     const { tools } = await harness.client.listTools();
     const schema = tools.find((t) => t.name === 'add_negative_keyword')?.inputSchema as {
       properties?: { keywords?: { maxItems?: number } };
     };
-    expect(schema.properties?.keywords?.maxItems).toBe(20);
+    expect(schema.properties?.keywords?.maxItems).toBe(1000);
   });
 
   it('rejects a match type outside the configured allowlist', async () => {
@@ -262,13 +262,18 @@ describe('remove_negative_keyword', () => {
     expect(mock.mutateRequests()).toHaveLength(0);
   });
 
-  it('does not expose text-based removal when it is disabled', async () => {
+  it('advertises text removal but rejects it when disabled', async () => {
     harness = await buildTestServer();
     const { tools } = await harness.client.listTools();
     const schema = tools.find((t) => t.name === 'remove_negative_keyword')?.inputSchema as {
       properties?: { criteria?: { items?: { properties?: Record<string, unknown> } } };
     };
     const itemProps = schema.properties?.criteria?.items?.properties ?? {};
-    expect(Object.keys(itemProps)).not.toContain('text');
+    expect(Object.keys(itemProps)).toContain('text');
+    const result = await callTool(harness.client, 'remove_negative_keyword', {
+      customerId: TEST_CUSTOMER_ID,
+      criteria: [{ scope: 'campaign', scopeId: '1', text: 'shoes', matchType: 'PHRASE' }],
+    });
+    expect(result.structured.error.code).toBe('INVALID_ARGUMENT');
   });
 });

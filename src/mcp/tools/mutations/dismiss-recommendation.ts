@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ResourceNotFoundError, ToolConstraintViolationError } from '../../../errors/tool-errors.js';
+import { MaxOperationsExceededError, ResourceNotFoundError, ToolConstraintViolationError } from '../../../errors/tool-errors.js';
 import { assertResourceNameCustomer } from '../../../google-ads/resource-names.js';
 import type { MutateOperation } from '../../../google-ads/types.js';
 import type { ExecOutcome } from '../../../google-ads/validation.js';
@@ -46,12 +46,12 @@ export const dismissRecommendation: MutationDefinition<
   resourceType: 'recommendation',
   annotations: { title: 'Dismiss recommendations', ...DESTRUCTIVE_ANNOTATIONS },
 
-  buildInputSchema: (policy) => ({
+  buildInputSchema: () => ({
     customerId: CustomerIdInput,
     recommendationResourceNames: z
       .array(z.string().regex(RECOMMENDATION_RESOURCE_NAME))
       .min(1)
-      .max(policy.maxResourcesPerCall)
+      .max(100)
       .describe('Full recommendation resource names, as returned by list_recommendations.'),
   }),
 
@@ -62,6 +62,12 @@ export const dismissRecommendation: MutationDefinition<
     results: z.array(z.record(z.string(), z.unknown())),
     validateOnlySupported: z.boolean(),
     googleAdsRequestId: z.string().nullable().optional(),
+  },
+
+  checkInputConstraints(ctx, input): void {
+    if (input.recommendationResourceNames.length > ctx.policy.maxResourcesPerCall) {
+      throw new MaxOperationsExceededError('dismiss_recommendation', input.recommendationResourceNames.length, ctx.policy.maxResourcesPerCall);
+    }
   },
 
   async fetchState(ctx, input): Promise<DismissState> {
