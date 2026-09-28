@@ -5,6 +5,8 @@ import { createAuditLogger, createLogger, type AuditEvent } from '../../src/audi
 import { CustomerAllowlist } from '../../src/authorization/customer-allowlist.js';
 import { CapabilityRegistry } from '../../src/capabilities/registry.js';
 import type { AppConfig } from '../../src/capabilities/schema.js';
+import { loadEnv } from '../../src/config/env.js';
+import { loadInstallConfig } from '../../src/config/load-config.js';
 import { StaticAccessTokenProvider, type AccessTokenProvider } from '../../src/google-ads/auth.js';
 import { GoogleAdsRestClient } from '../../src/google-ads/client.js';
 import { createMcpServer } from '../../src/mcp/server.js';
@@ -29,6 +31,7 @@ export interface TestHarness {
 export async function buildTestServer(
   options: {
     config?: Partial<AppConfig>;
+    installSettings?: NodeJS.ProcessEnv;
     mutationsEnabledEnv?: boolean;
     transport?: Partial<Deps['transport']>;
     /** Route HTTP through a GoogleAdsMock. See GoogleAdsMock.fetchImpl. */
@@ -38,7 +41,8 @@ export async function buildTestServer(
     tokenProvider?: AccessTokenProvider;
   } = {},
 ): Promise<TestHarness> {
-  const config = buildConfig(options.config);
+  const installEnv = options.installSettings ? loadEnv(options.installSettings) : undefined;
+  const config = installEnv ? loadInstallConfig(installEnv) : buildConfig(options.config);
 
   const logs: Record<string, unknown>[] = [];
   const stream = new PassThrough();
@@ -81,7 +85,8 @@ export async function buildTestServer(
 
   const deps: Deps = {
     config,
-    registry: new CapabilityRegistry(config, options.mutationsEnabledEnv ?? true),
+    registry: new CapabilityRegistry(config, options.mutationsEnabledEnv ?? true,
+      installEnv?.GOOGLE_ADS_INSTALL_MODE === 'read_only'),
     allowlist: new CustomerAllowlist(config.accounts.allowedCustomerIds),
     transport,
     logger,

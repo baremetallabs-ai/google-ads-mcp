@@ -7,6 +7,7 @@ import { createTokenProvider } from './google-ads/auth.js';
 import { GoogleAdsApiError } from './errors/tool-errors.js';
 import { GoogleAdsRestClient } from './google-ads/client.js';
 import type { Deps } from './types/index.js';
+import type { AccessTokenProvider } from './google-ads/auth.js';
 
 /** Validate all settings and credentials before either MCP transport becomes ready. */
 export async function initializeRuntime(sourceEnv: NodeJS.ProcessEnv = process.env): Promise<Deps> {
@@ -23,9 +24,25 @@ export async function initializeRuntime(sourceEnv: NodeJS.ProcessEnv = process.e
   const registry = new CapabilityRegistry(config, env.GOOGLE_ADS_MUTATIONS_ENABLED,
     installing && env.GOOGLE_ADS_INSTALL_MODE === 'read_only');
   const allowlist = new CustomerAllowlist(config.accounts.allowedCustomerIds);
-  let tokenProvider;
+  let tokenProvider: AccessTokenProvider;
   try {
-    tokenProvider = createTokenProvider(env);
+    // A loopback token exchange used only by the controlled process test. AgentApps
+    // does not declare either setting and its egress policy excludes loopback.
+    if (sourceEnv.NODE_ENV === 'test' && sourceEnv.GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT) {
+      const endpoint = new URL(sourceEnv.GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT);
+      if (!['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname)) {
+        throw new Error('Test token endpoint must be loopback');
+      }
+      tokenProvider = { getAccessToken: async () => {
+        const response = await fetch(endpoint, { method: 'POST' });
+        if (!response.ok) throw new Error('Test token exchange failed');
+        const payload = await response.json() as { access_token?: unknown };
+        if (typeof payload.access_token !== 'string' || !payload.access_token) throw new Error('No test access token');
+        return payload.access_token;
+      } };
+    } else {
+      tokenProvider = createTokenProvider(env);
+    }
     await tokenProvider.getAccessToken();
   } catch (err) {
     throw new ConfigurationError(err instanceof GoogleAdsApiError ? err.message

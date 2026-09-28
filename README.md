@@ -13,6 +13,7 @@ the MCP client.
 
 ## Contents
 
+- [Private AgentApps installation](#private-agentapps-installation)
 - [Architecture](#architecture)
 - [MCP client compatibility](#mcp-client-compatibility)
 - [The client-side HITL boundary](#the-client-side-hitl-boundary)
@@ -30,6 +31,73 @@ the MCP client.
 - [Local development](#local-development)
 - [Testing](#testing)
 - [Production limitations](#production-limitations)
+
+## Private AgentApps installation
+
+Publish the reviewed source revision with its committed `server.json` and
+`agentapps/main.mjs` as one **private** AgentApps entry. The catalog declares the same
+15 read and 15 mutation actions for both install modes. Owner review with placeholder
+settings may show **Needs real settings**. An installation remains **Activating** and
+exposes no tools until its first start with real settings validates credentials and
+confirms all 30 declared action descriptors. Every later start repeats setting and
+credential validation. Live publication, installation, and account verification are
+operator activities after this code delivery.
+
+Set these environment variables on a read-only installation (replace every example
+value with a real one). Omit `GOOGLE_ADS_INSTALL_MODE` to use its `read_only` default:
+
+```dotenv
+GOOGLE_ADS_ALLOWED_CUSTOMER_IDS=9876543210
+GOOGLE_ADS_AUTH_MODE=service_account
+GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE=json
+GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON={"type":"service_account","client_email":"your-service-account@example.iam.gserviceaccount.com","private_key":"YOUR_PRIVATE_KEY"}
+```
+
+For a mutation installation, add an explicit mode and positive daily ceiling in
+micros to the same settings:
+
+```dotenv
+GOOGLE_ADS_INSTALL_MODE=mutations
+GOOGLE_ADS_MASTER_BUDGET_MICROS=500000000
+```
+
+`GOOGLE_ADS_ALLOWED_CUSTOMER_IDS` accepts comma-separated, unique ten-digit customer
+IDs. It rejects missing, malformed, duplicate, and shipped example IDs. The mutation
+ceiling is the maximum **sum of configured daily budgets** for the target account, not
+a spend cap. Read `get_budget_pacing` first and choose a ceiling at or above the
+account's current total; a lower ceiling blocks even budget decreases. For multiple
+allowlisted accounts, the same ceiling applies to each account separately. Read-only
+installs need no ceiling.
+
+The default mutation policy enables only the 15 named mutation actions. Campaign and
+ad-group toggles and budget changes allow one resource per call; ad toggles and paused
+ad creation allow 10; keyword toggles, negative keyword changes, paused keyword
+creation, and recommendation dismissal allow 20. Tracking changes forbid final URL
+changes. The optional `GOOGLE_ADS_CAPABILITIES_INLINE` setting accepts YAML or JSON
+with the same schema as the legacy capability file. It may disable actions, narrow
+customers to a nonempty subset, lower limits or the master ceiling, and add stricter
+constraints. It cannot expand any of them. The legacy `GOOGLE_ADS_MCP_CONFIG` file
+path remains available outside AgentApps; do not set both settings. Setting
+`GOOGLE_ADS_MUTATIONS_ENABLED=false` is an additional kill switch.
+
+All mutation actions remain discoverable in read-only mode. A syntactically valid
+mutation call is denied with `TOOL_DISABLED`, a configuration-disabled message, and
+an audit event before any Google Ads request. Tool input and output schemas stay fixed
+across modes; the effective limits are enforced inside the handlers.
+
+Inline service-account JSON is the primary AgentApps credential route. Grant that
+service account direct access to the advertiser account. The recommended Google Ads
+role is **Read only** for a read-only install and **Standard** for a mutation install.
+`GOOGLE_ADS_LOGIN_CUSTOMER_ID` is optional for direct service-account access and may
+route through a linked manager. Environment OAuth remains compatible: select
+`GOOGLE_ADS_AUTH_MODE=user` and set `GOOGLE_ADS_CLIENT_ID`,
+`GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, and the required manager
+`GOOGLE_ADS_LOGIN_CUSTOMER_ID`. `GOOGLE_ADS_DEVELOPER_TOKEN` is optional in both routes.
+Insufficient Google Ads write permission returns the existing sanitized authorization
+error. The consuming eve agent owns human approval before every mutation.
+
+After the installation activates, an operator may make a harmless live call to
+`list_accessible_accounts` or `get_account_summary` to confirm account access.
 - [Explicitly unsupported operations](#explicitly-unsupported-operations)
 
 ---
@@ -326,8 +394,8 @@ There is no generic Google Ads mutate operation.
 
 ## Mutation tool catalog
 
-Registered **only when explicitly enabled**. Each represents one understandable
-business operation.
+All fifteen are registered in every mode. Each represents one understandable
+business operation; disabled calls return `TOOL_DISABLED` with an audit event.
 
 | Tool | Effect |
 |---|---|
@@ -412,8 +480,8 @@ mutations:
 GOOGLE_ADS_MUTATIONS_ENABLED=false   # environment kill switch
 ```
 
-When either is off, mutation tools are **not registered at all** — they are absent from
-`tools/list` rather than advertised and then rejected.
+When either is off, mutation tools remain listed and valid calls receive an audited
+`TOOL_DISABLED` response before any Google Ads request.
 
 ---
 
@@ -485,8 +553,8 @@ performing badly enough to pause — that is the client's call.
 With `allowFinalUrlChanges: false`, a domain comparison alone is **not** treated as
 sufficient. The tool:
 
-- omits `finalUrls` from the published schema entirely, so it is rejected at the
-  protocol layer as an unknown property
+- keeps `finalUrls` in the fixed schema but rejects it in the handler before reading
+  current state or sending a mutation
 - requires an `{lpurl}`-family placeholder in any tracking template — a template without
   one *is* the destination, so permitting it would let a caller redirect clicks while
   nominally only touching "tracking"
@@ -615,10 +683,9 @@ record full advertising content: `create_paused_ad` logs headline and descriptio
 
 Read tools are logged at `debug` and do not emit audit events.
 
-One consequence of preferring omission from `tools/list`: a call to a disabled tool is
-rejected by the MCP SDK before any of this server's code runs, so it produces no audit
-event. The startup `tool_registration_complete` record lists every suppressed tool and
-the reason, and is the audit trail for suppression.
+Disabled mutation tools remain in `tools/list`. Syntactically valid calls reach the
+handler, which writes a denied audit event before any Google Ads request. The startup
+`tool_registration_complete` record also lists suppressed actions and their reasons.
 
 ---
 
@@ -689,7 +756,7 @@ JSON sent to Google.
 
 Notable properties under test:
 
-- standard `tools/list` and `tools/call`; disabled tools omitted from discovery
+- standard `tools/list` and `tools/call`; disabled mutations remain discoverable
 - no approval-shaped argument exists on any tool, and extras are refused
 - `validate_only` precedes execution with a **byte-identical body**
 - a validation failure prevents execution (exactly one HTTP call)
