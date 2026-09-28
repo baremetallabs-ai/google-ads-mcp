@@ -34,9 +34,11 @@ export interface MutationDefinition<
   description: string;
   resourceType: string;
   annotations: ToolAnnotations;
-  /** Built from the policy, so published limits match enforced limits. */
-  buildInputSchema(policy: PolicyFor<N>): z.ZodRawShape;
+  /** Fixed descriptor shared by every install mode. */
+  buildInputSchema(): z.ZodRawShape;
   outputSchema: z.ZodRawShape;
+  /** Checks policy-dependent input before any Google Ads read. */
+  checkInputConstraints?(ctx: MutationCtx<N>, input: TInput): void;
 
   /** Step 5: authoritative current state from Google Ads. */
   fetchState(ctx: MutationCtx<N>, input: TInput): Promise<TState>;
@@ -70,12 +72,11 @@ export interface MutationDefinition<
  */
 export function createMutationHandler<N extends MutationToolName, TInput, TState>(
   def: MutationDefinition<N, TInput, TState>,
-  policy: PolicyFor<N>,
   deps: Deps,
   /** The same strict schema published in tools/list, so advertised == enforced. */
   prebuiltSchema?: z.ZodType,
 ) {
-  const inputSchema = prebuiltSchema ?? z.strictObject(def.buildInputSchema(policy));
+  const inputSchema = prebuiltSchema ?? z.strictObject(def.buildInputSchema());
 
   return async (rawArgs: Record<string, unknown>): Promise<McpToolResult> => {
     const started = Date.now();
@@ -95,7 +96,7 @@ export function createMutationHandler<N extends MutationToolName, TInput, TState
       audit.customerId = customerId;
       audit.canonicalArguments = def.canonicalArguments(input);
 
-      // 4. Confirm the tool is enabled (defense in depth: it was not registered otherwise).
+      // 4. Confirm the tool is enabled after customer authorization.
       const livePolicy = deps.registry.assertEnabled(def.name);
       const ctx: MutationCtx<N> = {
         customerId,
@@ -103,6 +104,8 @@ export function createMutationHandler<N extends MutationToolName, TInput, TState
         transport: deps.transport,
         deps,
       };
+
+      def.checkInputConstraints?.(ctx, input);
 
       // 5. Authoritative current state.
       const state = await def.fetchState(ctx, input);

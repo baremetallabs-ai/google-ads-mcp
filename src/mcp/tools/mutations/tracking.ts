@@ -57,7 +57,7 @@ export const updateTrackingParameters: MutationDefinition<
   resourceType: 'campaign',
   annotations: { title: 'Update tracking parameters', ...DESTRUCTIVE_ANNOTATIONS },
 
-  buildInputSchema: (policy) => ({
+  buildInputSchema: () => ({
     customerId: CustomerIdInput,
     entityType: z.enum(['campaign', 'ad_group', 'ad']),
     campaignId: NumericIdInput.optional(),
@@ -77,13 +77,9 @@ export const updateTrackingParameters: MutationDefinition<
       .describe('Query parameters appended to the final URL. Pass null to clear.'),
     urlCustomParameters: z
       .array(z.strictObject({ key: z.string().regex(/^\w{1,16}$/), value: z.string().max(250) }))
-      .max(policy.maxCustomParameters)
+      .max(8)
       .optional(),
-    // When final URL changes are disallowed the field is absent from the published
-    // schema entirely, so a strict object rejects it before the handler runs.
-    ...(policy.allowFinalUrlChanges
-      ? { finalUrls: z.array(HttpsUrlInput).min(1).max(4).optional() }
-      : {}),
+    finalUrls: z.array(HttpsUrlInput).min(1).max(4).optional(),
     expectedCurrentTrackingTemplate: z.string().nullable().optional(),
     expectedCurrentFinalUrl: z.string().optional(),
   }),
@@ -98,6 +94,18 @@ export const updateTrackingParameters: MutationDefinition<
     finalUrlChanged: z.boolean(),
     googleAdsRequestId: z.string().nullable().optional(),
     validatedOperationHash: z.string().optional(),
+  },
+
+  checkInputConstraints(ctx, input): void {
+    if (input.urlCustomParameters && input.urlCustomParameters.length > ctx.policy.maxCustomParameters) {
+      throw new ToolConstraintViolationError('Too many URL custom parameters for this configuration.');
+    }
+    if (input.finalUrls !== undefined && !ctx.policy.allowFinalUrlChanges) {
+      throw new ToolConstraintViolationError('Final URL changes are disabled for this tool.');
+    }
+    if (input.finalUrlSuffix !== undefined && !ctx.policy.allowFinalUrlSuffixChanges) {
+      throw new ToolConstraintViolationError('Final URL suffix changes are disabled for this tool.');
+    }
   },
 
   async fetchState(ctx, input): Promise<TrackingState> {

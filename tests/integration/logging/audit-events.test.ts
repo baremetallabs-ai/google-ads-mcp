@@ -198,7 +198,7 @@ describe('audit events', () => {
     harness = await buildTestServer({ mutationsEnabledEnv: false });
     const registration = harness.logs.find((l) => l.msg === 'tool_registration_complete');
     expect(registration).toBeDefined();
-    expect(registration?.mutationToolCount).toBe(0);
+    expect(registration?.mutationToolCount).toBe(15);
     expect((registration?.suppressed as unknown[]).length).toBe(15);
     expect(registration?.mutationsGloballyEnabled).toBe(false);
   });

@@ -154,7 +154,7 @@ describe('explicitly excluded operations', () => {
 });
 
 describe('capability gating in discovery', () => {
-  it('omits a disabled tool entirely', async () => {
+  it('keeps disabled tools discoverable', async () => {
     harness = await buildTestServer({
       config: {
         mutations: {
@@ -167,35 +167,35 @@ describe('capability gating in discovery', () => {
     });
     const names = (await harness.client.listTools()).tools.map((t) => t.name);
     expect(names).toContain('pause_campaign');
-    expect(names).not.toContain('set_campaign_budget');
-    expect(names).not.toContain('enable_campaign');
-    expect(names).toHaveLength(16); // 15 reads + 1 mutation
+    expect(names).toContain('set_campaign_budget');
+    expect(names).toContain('enable_campaign');
+    expect(names).toHaveLength(30);
   });
 
-  it('the environment kill switch removes every mutation but keeps reads', async () => {
+  it('the environment kill switch keeps every mutation discoverable', async () => {
     harness = await buildTestServer({ mutationsEnabledEnv: false });
     const names = (await harness.client.listTools()).tools.map((t) => t.name);
-    expect(names).toHaveLength(15);
-    for (const name of MUTATION_TOOL_NAMES) expect(names).not.toContain(name);
+    expect(names).toHaveLength(30);
+    for (const name of MUTATION_TOOL_NAMES) expect(names).toContain(name);
     for (const name of READ_TOOL_NAMES) expect(names).toContain(name);
   });
 
-  it('the global mutations switch removes every mutation but keeps reads', async () => {
+  it('the global mutations switch keeps every mutation discoverable', async () => {
     harness = await buildTestServer({
       config: { mutations: { enabled: false, default: 'deny', tools: {} } as never, budgets: undefined },
     });
     const names = (await harness.client.listTools()).tools.map((t) => t.name);
-    expect(names).toHaveLength(15);
+    expect(names).toHaveLength(30);
+    for (const name of MUTATION_TOOL_NAMES) expect(names).toContain(name);
     for (const name of READ_TOOL_NAMES) expect(names).toContain(name);
   });
 
-  it('publishes the configured batch limit in the tool schema', async () => {
+  it('publishes a fixed hard batch limit in the tool schema', async () => {
     harness = await buildTestServer();
     const { tools } = await harness.client.listTools();
     const schema = tools.find((t) => t.name === 'pause_ad')?.inputSchema as {
       properties?: { ads?: { maxItems?: number } };
     };
-    // Advertised limit must match the enforced policy value.
-    expect(schema.properties?.ads?.maxItems).toBe(10);
+    expect(schema.properties?.ads?.maxItems).toBe(100);
   });
 });

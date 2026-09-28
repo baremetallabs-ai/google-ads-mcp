@@ -76,3 +76,39 @@ describe('authentication environment', () => {
       .toThrow(/Supplied service-account settings: GOOGLE_APPLICATION_CREDENTIALS/);
   });
 });
+
+describe('install environment', () => {
+  const allowed = { ...service, GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: '987-654-3210, 8765432109' };
+  it('normalizes customers and defaults to read-only without a ceiling', () => {
+    expect(loadEnv(allowed)).toMatchObject({
+      GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: '9876543210,8765432109',
+      GOOGLE_ADS_INSTALL_MODE: 'read_only',
+    });
+  });
+  it('requires an explicit positive mutation ceiling', () => {
+    expect(() => loadEnv({ ...allowed, GOOGLE_ADS_INSTALL_MODE: 'mutations' })).toThrow(/GOOGLE_ADS_MASTER_BUDGET_MICROS/);
+    expect(loadEnv({ ...allowed, GOOGLE_ADS_INSTALL_MODE: 'mutations', GOOGLE_ADS_MASTER_BUDGET_MICROS: '500000000' }).GOOGLE_ADS_MASTER_BUDGET_MICROS).toBe('500000000');
+  });
+  it.each([
+    [{ GOOGLE_ADS_INSTALL_MODE: 'read_only', GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: undefined }, 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS'],
+    [{ GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: '' }, 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS'],
+    [{ GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: '1234567890' }, 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS'],
+    [{ GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: '2345678901' }, 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS'],
+    [{ GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: '1111111111' }, 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS'],
+    [{ GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: '9876543210,987-654-3210' }, 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS'],
+    [{ GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: 'bad-secret' }, 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS'],
+    [{ GOOGLE_ADS_MASTER_BUDGET_MICROS: '0' }, 'GOOGLE_ADS_MASTER_BUDGET_MICROS'],
+    [{ GOOGLE_ADS_MASTER_BUDGET_MICROS: 'invalid-secret' }, 'GOOGLE_ADS_MASTER_BUDGET_MICROS'],
+    [{ GOOGLE_ADS_CAPABILITIES_INLINE: '', GOOGLE_ADS_MCP_CONFIG: '' }, 'GOOGLE_ADS_CAPABILITIES_INLINE'],
+  ])('rejects invalid install settings without echoing values', (settings, name) => {
+    try {
+      loadEnv({ ...allowed, ...settings });
+      throw new Error('Expected configuration rejection');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain(name);
+      expect(message).not.toContain('bad-secret');
+      expect(message).not.toContain('invalid-secret');
+    }
+  });
+});

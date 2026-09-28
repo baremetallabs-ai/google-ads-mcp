@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
+import { CustomerIdSchema, MicrosStringSchema } from '../capabilities/schema.js';
 
 const Booleanish = z
   .enum(['true', 'false', '1', '0', 'yes', 'no'])
@@ -21,6 +22,10 @@ export const EnvSchema = z.object({
   GOOGLE_ADS_API_VERSION: z.string().regex(/^v\d+$/).default('v25'),
   GOOGLE_ADS_MUTATIONS_ENABLED: Booleanish.default(true),
   GOOGLE_ADS_MCP_CONFIG: Setting.optional(),
+  GOOGLE_ADS_INSTALL_MODE: z.enum(['read_only', 'mutations']).optional(),
+  GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: Setting.optional(),
+  GOOGLE_ADS_MASTER_BUDGET_MICROS: Setting.optional(),
+  GOOGLE_ADS_CAPABILITIES_INLINE: Setting.optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 
@@ -38,6 +43,8 @@ const ENV_KEYS = [
   'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN',
   'GOOGLE_ADS_LOGIN_CUSTOMER_ID', 'GOOGLE_ADS_API_VERSION',
   'GOOGLE_ADS_MUTATIONS_ENABLED', 'GOOGLE_ADS_MCP_CONFIG', 'LOG_LEVEL',
+  'GOOGLE_ADS_INSTALL_MODE', 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS',
+  'GOOGLE_ADS_MASTER_BUDGET_MICROS', 'GOOGLE_ADS_CAPABILITIES_INLINE',
 ] as const;
 
 export class ConfigurationError extends Error {
@@ -62,7 +69,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const picked: Record<string, string> = {};
   for (const key of ENV_KEYS) {
     const value = source[key];
-    if (value !== undefined && value !== '') picked[key] = value;
+    if (value !== undefined && (value !== '' ||
+        ['GOOGLE_ADS_ALLOWED_CUSTOMER_IDS', 'GOOGLE_ADS_INSTALL_MODE',
+          'GOOGLE_ADS_MASTER_BUDGET_MICROS', 'GOOGLE_ADS_CAPABILITIES_INLINE',
+          'GOOGLE_ADS_MCP_CONFIG'].includes(key))) picked[key] = value;
   }
   const parsed = EnvSchema.safeParse(picked);
   if (!parsed.success) {
@@ -70,6 +80,32 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       [...new Set(parsed.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`))].join(', '));
   }
   const env = parsed.data;
+  if (source.GOOGLE_ADS_CAPABILITIES_INLINE !== undefined && source.GOOGLE_ADS_MCP_CONFIG !== undefined) {
+    throw new ConfigurationError('Set only one of GOOGLE_ADS_CAPABILITIES_INLINE or GOOGLE_ADS_MCP_CONFIG.');
+  }
+  const installing = source.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS !== undefined || source.GOOGLE_ADS_INSTALL_MODE !== undefined;
+  if (installing) {
+    if (!env.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS) {
+      throw new ConfigurationError('Set GOOGLE_ADS_ALLOWED_CUSTOMER_IDS to at least one real ten-digit customer ID.');
+    }
+    const ids = env.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS.split(',').map((id) => CustomerIdSchema.safeParse(id));
+    const normalized = ids.map((id) => id.success ? id.data : '');
+    const placeholders = new Set(['1234567890', '2345678901']);
+    if (normalized.some((id) => !id || placeholders.has(id) || /^(\d)\1{9}$/.test(id)) ||
+        new Set(normalized).size !== normalized.length) {
+      throw new ConfigurationError('GOOGLE_ADS_ALLOWED_CUSTOMER_IDS must contain unique, real ten-digit customer IDs.');
+    }
+    env.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS = normalized.join(',');
+    env.GOOGLE_ADS_INSTALL_MODE ??= 'read_only';
+    if (env.GOOGLE_ADS_MASTER_BUDGET_MICROS !== undefined) {
+      const ceiling = MicrosStringSchema.safeParse(env.GOOGLE_ADS_MASTER_BUDGET_MICROS);
+      if (!ceiling.success || BigInt(ceiling.data) <= 0n) {
+        throw new ConfigurationError('GOOGLE_ADS_MASTER_BUDGET_MICROS must be a positive decimal micros amount.');
+      }
+    } else if (env.GOOGLE_ADS_INSTALL_MODE === 'mutations') {
+      throw new ConfigurationError('Set GOOGLE_ADS_MASTER_BUDGET_MICROS to a positive ceiling for mutation mode.');
+    }
+  }
   const present = (key: keyof BaseEnv): boolean => env[key] !== undefined;
   const userKeys = ['GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN'] as const;
   const serviceKeys = ['GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE', 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_FILE', 'GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON', 'GOOGLE_APPLICATION_CREDENTIALS'] as const;

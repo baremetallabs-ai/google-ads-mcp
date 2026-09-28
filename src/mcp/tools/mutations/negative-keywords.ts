@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   DuplicateResourceError,
   InvalidArgumentError,
+  MaxOperationsExceededError,
   ResourceNotFoundError,
   UnsupportedResourceStateError,
 } from '../../../errors/tool-errors.js';
@@ -72,7 +73,7 @@ export const addNegativeKeyword: MutationDefinition<'add_negative_keyword', AddI
   resourceType: 'campaign_criterion',
   annotations: { title: 'Add negative keywords', ...ADDITIVE_ANNOTATIONS },
 
-  buildInputSchema: (policy) => ({
+  buildInputSchema: () => ({
     customerId: CustomerIdInput,
     campaignId: NumericIdInput.optional().describe(
       'Target campaign. Supply exactly one of campaignId or adGroupId.',
@@ -83,14 +84,12 @@ export const addNegativeKeyword: MutationDefinition<'add_negative_keyword', AddI
     keywords: z
       .array(
         z.strictObject({
-          text: z.string().min(1).max(policy.maxTextLength),
-          matchType: policy.allowedMatchTypes
-            ? z.enum(policy.allowedMatchTypes as [string, ...string[]])
-            : MatchTypeInput,
+          text: z.string().min(1).max(80),
+          matchType: MatchTypeInput,
         }),
       )
       .min(1)
-      .max(policy.maxResourcesPerCall),
+      .max(1000),
   }),
 
   outputSchema: {
@@ -189,7 +188,11 @@ export const addNegativeKeyword: MutationDefinition<'add_negative_keyword', AddI
     };
   },
 
-  checkConstraints(ctx, input, _state): void {
+  checkInputConstraints(ctx, input): void {
+    if (input.keywords.length > ctx.policy.maxResourcesPerCall) {
+      throw new MaxOperationsExceededError('add_negative_keyword', input.keywords.length, ctx.policy.maxResourcesPerCall);
+    }
+    for (const kw of input.keywords) validateKeywordText(kw.text, ctx.policy.maxTextLength);
     const allowed = ctx.policy.allowedMatchTypes;
     if (allowed) {
       for (const kw of input.keywords) {
@@ -202,6 +205,8 @@ export const addNegativeKeyword: MutationDefinition<'add_negative_keyword', AddI
       }
     }
   },
+
+  checkConstraints(): void {},
 
   detectNoOp(ctx, _input, state): Record<string, unknown> | null {
     if (state.toCreate.length > 0) return null;
@@ -350,7 +355,7 @@ export const removeNegativeKeyword: MutationDefinition<
   resourceType: 'campaign_criterion',
   annotations: { title: 'Remove negative keywords', ...DESTRUCTIVE_ANNOTATIONS },
 
-  buildInputSchema: (policy) => ({
+  buildInputSchema: () => ({
     customerId: CustomerIdInput,
     criteria: z
       .array(
@@ -359,13 +364,12 @@ export const removeNegativeKeyword: MutationDefinition<
           scope: z.enum(['campaign', 'ad_group']).optional(),
           scopeId: NumericIdInput.optional(),
           criterionId: NumericIdInput.optional(),
-          ...(policy.allowTextResolution
-            ? { text: z.string().min(1).max(80).optional(), matchType: MatchTypeInput.optional() }
-            : {}),
+          text: z.string().min(1).max(80).optional(),
+          matchType: MatchTypeInput.optional(),
         }),
       )
       .min(1)
-      .max(policy.maxResourcesPerCall),
+      .max(1000),
   }),
 
   outputSchema: {
@@ -375,6 +379,15 @@ export const removeNegativeKeyword: MutationDefinition<
     results: z.array(z.record(z.string(), z.unknown())),
     googleAdsRequestId: z.string().nullable().optional(),
     validatedOperationHash: z.string().optional(),
+  },
+
+  checkInputConstraints(ctx, input): void {
+    if (input.criteria.length > ctx.policy.maxResourcesPerCall) {
+      throw new MaxOperationsExceededError('remove_negative_keyword', input.criteria.length, ctx.policy.maxResourcesPerCall);
+    }
+    if (!ctx.policy.allowTextResolution && input.criteria.some((criterion) => criterion.text !== undefined)) {
+      throw new InvalidArgumentError('Removal by keyword text is disabled. Supply a resourceName, or scope plus scopeId and criterionId.');
+    }
   },
 
   async fetchState(ctx, input): Promise<RemoveState> {

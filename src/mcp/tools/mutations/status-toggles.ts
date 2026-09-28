@@ -274,7 +274,7 @@ function batchToggleTool<N extends MutationToolName>(config: {
     description: config.description,
     resourceType,
     annotations: { title: config.title, ...DESTRUCTIVE_ANNOTATIONS },
-    buildInputSchema: (policy) => ({
+    buildInputSchema: () => ({
       customerId: CustomerIdInput,
       [collection]: z
         .array(
@@ -293,9 +293,9 @@ function batchToggleTool<N extends MutationToolName>(config: {
           ),
         )
         .min(1)
-        .max((policy as { maxResourcesPerCall: number }).maxResourcesPerCall)
+        .max(isAd ? 100 : 1000)
         .describe(
-          `Up to ${String((policy as { maxResourcesPerCall: number }).maxResourcesPerCall)} items. ` +
+          `Up to ${isAd ? 100 : 1000} items. ` +
             'All succeed or all fail: partial success is disabled.',
         ),
     }),
@@ -402,7 +402,7 @@ function batchToggleTool<N extends MutationToolName>(config: {
       return { items, toChange: items.filter((it) => it.status !== config.target) };
     },
 
-    checkConstraints(ctx, input, _state): void {
+    checkInputConstraints(ctx, input): void {
       const requested = (input[collection] as unknown[]).length;
       const max = (ctx.policy as { maxResourcesPerCall: number }).maxResourcesPerCall;
       if (requested > max) {
@@ -412,6 +412,8 @@ function batchToggleTool<N extends MutationToolName>(config: {
         );
       }
     },
+
+    checkConstraints(): void {},
 
     detectNoOp(ctx, _input, state): Record<string, unknown> | null {
       if (state.toChange.length > 0) return null;

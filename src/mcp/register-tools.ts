@@ -16,13 +16,7 @@ export interface RegistrationReport {
 }
 
 /**
- * Register read tools always, and mutation tools only when explicitly enabled.
- *
- * Disabled tools are never registered, so they are absent from tools/list entirely -
- * the spec's preferred behaviour over registering and rejecting. A consequence worth
- * being explicit about: because an unregistered tool is rejected by the SDK before any
- * of our code runs, a call to one produces no audit event. The startup
- * `tool_registration_complete` record is the audit trail for suppression.
+ * Register the fixed read and mutation tool contract in every mode.
  */
 export function registerTools(server: McpServer, deps: Deps): RegistrationReport {
   const report: RegistrationReport = { readTools: [], mutationTools: [], suppressed: [] };
@@ -45,26 +39,23 @@ export function registerTools(server: McpServer, deps: Deps): RegistrationReport
   for (const name of MUTATION_TOOL_NAMES) {
     if (!deps.registry.isEnabled(name)) {
       report.suppressed.push({ name, reason: deps.registry.reasonFor(name) });
-      continue;
     }
-    // isEnabled() already proved the policy is present and enabled.
-    const policy = deps.registry.assertEnabled(name);
     const def = MUTATION_TOOLS[name];
     // One strict schema, published and enforced. Strictness is what makes
     // "no custom approval arguments" visible to a client rather than only enforced
     // after the fact: the advertised JSON Schema carries additionalProperties: false.
-    const inputSchema = z.strictObject(def.buildInputSchema(policy));
+    const inputSchema = z.strictObject(def.buildInputSchema());
     server.registerTool(
       def.name,
       {
         title: def.title,
         description: def.description,
-        // Built from the policy, so published limits match enforced limits.
+        // Fixed descriptor; narrower policy is enforced in the handler.
         inputSchema,
         outputSchema: toolOutputSchema(def.outputSchema),
         annotations: def.annotations,
       },
-      createMutationHandler(def, policy, deps, inputSchema) as never,
+      createMutationHandler(def, deps, inputSchema) as never,
     );
     report.mutationTools.push(name);
   }
