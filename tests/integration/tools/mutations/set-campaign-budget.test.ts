@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { GoogleAdsMock } from '../../../helpers/mock-google-ads.js';
 import {
   buildTestServer,
@@ -322,8 +322,10 @@ describe('budget idempotency and staleness', () => {
 });
 
 describe('budget capability gating', () => {
-  it('is absent from tools/list when no master budget is configured', async () => {
+  it('remains discoverable but denies calls without a master budget', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
     harness = await buildTestServer({
+      fetchImpl,
       config: {
         budgets: undefined,
         mutations: {
@@ -334,6 +336,13 @@ describe('budget capability gating', () => {
       },
     });
     const names = (await harness.client.listTools()).tools.map((t) => t.name);
-    expect(names).not.toContain('set_campaign_budget');
+    expect(names).toContain('set_campaign_budget');
+    const result = await callTool(harness.client, 'set_campaign_budget', {
+      customerId: TEST_CUSTOMER_ID, budgetId: '100', amountMicros: '40000000',
+      expectedCurrentAmountMicros: '30000000',
+    });
+    expect(result.structured.error.code).toBe('TOOL_DISABLED');
+    expect(harness.auditEvents()).toMatchObject([{ toolName: 'set_campaign_budget', result: 'denied', errorCode: 'TOOL_DISABLED' }]);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

@@ -3,6 +3,13 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const artifact = resolve('agentapps/main.mjs');
+// AgentApps grants only declared env names and no sys permission. These optional
+// Node library probes happen during module evaluation, before our entry can run.
+const denoPermissionShims = {
+  'pino/pino.js': ["const hostname = os.hostname()", "const hostname = 'agentapps'"],
+  'thread-stream/index.js': ["process.env.NODE_V8_COVERAGE", 'undefined'],
+  'google-logging-utils/build/src/logging-utils.js': ["process.env[exports.env.nodeEnables]", 'undefined'],
+};
 const result = await build({
   entryPoints: ['src/agentapps.ts'],
   outfile: artifact,
@@ -13,6 +20,18 @@ const result = await build({
   target: 'es2023',
   legalComments: 'none',
   banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
+  plugins: [{
+    name: 'agentapps-deno-permissions',
+    setup(build) {
+      build.onLoad({ filter: /node_modules\/(pino\/pino\.js|thread-stream\/index\.js|google-logging-utils\/build\/src\/logging-utils\.js)$/ }, async (args) => {
+        const relative = args.path.slice(args.path.indexOf('node_modules/') + 'node_modules/'.length);
+        const [needle, replacement] = denoPermissionShims[relative];
+        const source = await readFile(args.path, 'utf8');
+        if (!source.includes(needle)) throw new Error(`AgentApps permission shim no longer matches ${relative}`);
+        return { contents: source.replaceAll(needle, replacement), loader: 'js' };
+      });
+    },
+  }],
 });
 const bytes = result.outputFiles[0]?.contents;
 if (!bytes) throw new Error('AgentApps bundle produced no output');

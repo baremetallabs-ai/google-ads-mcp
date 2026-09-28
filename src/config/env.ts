@@ -51,6 +51,15 @@ export class ConfigurationError extends Error {
   constructor(message: string) { super(message); this.name = 'ConfigurationError'; }
 }
 
+/** Deno denies reads of names outside the AgentApps manifest. Treat those as unset. */
+export function readEnvSetting(source: NodeJS.ProcessEnv, name: string): string | undefined {
+  try { return source[name]; }
+  catch (error) {
+    if (error instanceof Error && error.name === 'NotCapable') return undefined;
+    throw error;
+  }
+}
+
 function parseKey(raw: string, setting: string): ServiceAccountKey {
   let key: unknown;
   try { key = JSON.parse(raw); } catch { throw new ConfigurationError(`${setting} must contain a valid service-account JSON key.`); }
@@ -66,12 +75,13 @@ function parseKey(raw: string, setting: string): ServiceAccountKey {
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  if (source.GOOGLE_ADS_CAPABILITIES_INLINE !== undefined && source.GOOGLE_ADS_MCP_CONFIG !== undefined) {
+  if (readEnvSetting(source, 'GOOGLE_ADS_CAPABILITIES_INLINE') !== undefined &&
+      readEnvSetting(source, 'GOOGLE_ADS_MCP_CONFIG') !== undefined) {
     throw new ConfigurationError('Set only one of GOOGLE_ADS_CAPABILITIES_INLINE or GOOGLE_ADS_MCP_CONFIG.');
   }
   const picked: Record<string, string> = {};
   for (const key of ENV_KEYS) {
-    const value = source[key];
+    const value = readEnvSetting(source, key);
     if (value !== undefined && (value !== '' ||
         ['GOOGLE_ADS_ALLOWED_CUSTOMER_IDS', 'GOOGLE_ADS_INSTALL_MODE',
           'GOOGLE_ADS_MASTER_BUDGET_MICROS', 'GOOGLE_ADS_CAPABILITIES_INLINE',
@@ -83,7 +93,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       [...new Set(parsed.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`))].join(', '));
   }
   const env = parsed.data;
-  const installing = source.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS !== undefined || source.GOOGLE_ADS_INSTALL_MODE !== undefined;
+  const installing = readEnvSetting(source, 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS') !== undefined ||
+    readEnvSetting(source, 'GOOGLE_ADS_INSTALL_MODE') !== undefined;
+  if (!installing && (env.GOOGLE_ADS_CAPABILITIES_INLINE !== undefined || env.GOOGLE_ADS_MASTER_BUDGET_MICROS !== undefined)) {
+    throw new ConfigurationError('Set GOOGLE_ADS_ALLOWED_CUSTOMER_IDS when using GOOGLE_ADS_CAPABILITIES_INLINE or GOOGLE_ADS_MASTER_BUDGET_MICROS.');
+  }
   if (installing) {
     if (!env.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS) {
       throw new ConfigurationError('Set GOOGLE_ADS_ALLOWED_CUSTOMER_IDS to at least one real ten-digit customer ID.');

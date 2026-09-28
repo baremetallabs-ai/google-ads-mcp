@@ -1,7 +1,7 @@
 import { createAuditLogger, createLogger } from './audit/logger.js';
 import { CustomerAllowlist } from './authorization/customer-allowlist.js';
 import { CapabilityRegistry } from './capabilities/registry.js';
-import { ConfigurationError, loadEnv } from './config/env.js';
+import { ConfigurationError, loadEnv, readEnvSetting } from './config/env.js';
 import { loadConfig, loadInstallConfig } from './config/load-config.js';
 import { createTokenProvider } from './google-ads/auth.js';
 import { GoogleAdsApiError } from './errors/tool-errors.js';
@@ -12,7 +12,7 @@ import type { AccessTokenProvider } from './google-ads/auth.js';
 /** Validate all settings and credentials before either MCP transport becomes ready. */
 export async function initializeRuntime(sourceEnv: NodeJS.ProcessEnv = process.env): Promise<Deps> {
   const env = loadEnv(sourceEnv);
-  const installing = sourceEnv.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS !== undefined || sourceEnv.GOOGLE_ADS_INSTALL_MODE !== undefined;
+  const installing = env.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS !== undefined || env.GOOGLE_ADS_INSTALL_MODE !== undefined;
   const config = installing ? loadInstallConfig(env) : loadConfig(env.GOOGLE_ADS_MCP_CONFIG);
   const logger = createLogger({
     level: env.LOG_LEVEL,
@@ -25,11 +25,13 @@ export async function initializeRuntime(sourceEnv: NodeJS.ProcessEnv = process.e
     installing && env.GOOGLE_ADS_INSTALL_MODE === 'read_only');
   const allowlist = new CustomerAllowlist(config.accounts.allowedCustomerIds);
   let tokenProvider: AccessTokenProvider;
+  const testMode = readEnvSetting(sourceEnv, 'NODE_ENV');
+  const testEndpoint = readEnvSetting(sourceEnv, 'GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT');
   try {
     // A loopback token exchange used only by the controlled process test. AgentApps
     // does not declare either setting and its egress policy excludes loopback.
-    if (sourceEnv.NODE_ENV === 'test' && sourceEnv.GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT) {
-      const endpoint = new URL(sourceEnv.GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT);
+    if (testMode === 'test' && testEndpoint) {
+      const endpoint = new URL(testEndpoint);
       if (!['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname)) {
         throw new Error('Test token endpoint must be loopback');
       }
