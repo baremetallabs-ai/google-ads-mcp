@@ -2,13 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ConfigurationError, loadEnv } from '../../../src/config/env.js';
+import { ConfigurationError, loadEnv, readEnvSetting } from '../../../src/config/env.js';
 
 const key = JSON.stringify({ type: 'service_account', client_email: 'svc@example.iam.gserviceaccount.com', private_key: 'PRIVATE-SENTINEL' });
 const user = { GOOGLE_ADS_CLIENT_ID: 'client-id', GOOGLE_ADS_CLIENT_SECRET: 'CLIENT-SECRET-SENTINEL', GOOGLE_ADS_REFRESH_TOKEN: 'REFRESH-SENTINEL', GOOGLE_ADS_LOGIN_CUSTOMER_ID: '123-456-7890' };
 const service = { GOOGLE_ADS_AUTH_MODE: 'service_account', GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE: 'json', GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON: key };
 
 describe('authentication environment', () => {
+  it('treats undeclared Deno environment names as unset', () => {
+    const restricted = new Proxy({ ...service }, {
+      get(target, name) {
+        if (typeof name === 'string' && !(name in target)) {
+          const denied = new Error('denied');
+          denied.name = 'NotCapable';
+          throw denied;
+        }
+        return target[name as keyof typeof target];
+      },
+    });
+    expect(readEnvSetting(restricted, 'NODE_ENV')).toBeUndefined();
+    expect(loadEnv(restricted).GOOGLE_ADS_AUTH_MODE).toBe('service_account');
+  });
   it.each([undefined, 'developer-token'])('accepts legacy user credentials with token %s', (token) => {
     const env = loadEnv({ ...user, ...(token && { GOOGLE_ADS_DEVELOPER_TOKEN: token }) });
     expect(env.GOOGLE_ADS_AUTH_MODE).toBe('user');
@@ -88,6 +102,12 @@ describe('install environment', () => {
   it('requires an explicit positive mutation ceiling', () => {
     expect(() => loadEnv({ ...allowed, GOOGLE_ADS_INSTALL_MODE: 'mutations' })).toThrow(/GOOGLE_ADS_MASTER_BUDGET_MICROS/);
     expect(loadEnv({ ...allowed, GOOGLE_ADS_INSTALL_MODE: 'mutations', GOOGLE_ADS_MASTER_BUDGET_MICROS: '500000000' }).GOOGLE_ADS_MASTER_BUDGET_MICROS).toBe('500000000');
+  });
+  it('rejects install-only settings without an install customer allowlist', () => {
+    expect(() => loadEnv({ ...service, GOOGLE_ADS_CAPABILITIES_INLINE: '{}' }))
+      .toThrow(/GOOGLE_ADS_ALLOWED_CUSTOMER_IDS/);
+    expect(() => loadEnv({ ...service, GOOGLE_ADS_MASTER_BUDGET_MICROS: '500000000' }))
+      .toThrow(/GOOGLE_ADS_ALLOWED_CUSTOMER_IDS/);
   });
   it.each([
     [{ GOOGLE_ADS_INSTALL_MODE: 'read_only', GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: undefined }, 'GOOGLE_ADS_ALLOWED_CUSTOMER_IDS'],

@@ -31,6 +31,9 @@ the MCP client.
 - [Local development](#local-development)
 - [Testing](#testing)
 - [Production limitations](#production-limitations)
+- [Explicitly unsupported operations](#explicitly-unsupported-operations)
+
+---
 
 ## Private AgentApps installation
 
@@ -98,9 +101,6 @@ error. The consuming eve agent owns human approval before every mutation.
 
 After the installation activates, an operator may make a harmless live call to
 `list_accessible_accounts` or `get_account_summary` to confirm account access.
-- [Explicitly unsupported operations](#explicitly-unsupported-operations)
-
----
 
 ## Architecture
 

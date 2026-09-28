@@ -9334,8 +9334,8 @@ var require_thread_stream = __commonJS({
       unregister() {
       }
     };
-    var FinalizationRegistry2 = process.env.NODE_V8_COVERAGE ? FakeFinalizationRegistry : global.FinalizationRegistry || FakeFinalizationRegistry;
-    var WeakRef2 = process.env.NODE_V8_COVERAGE ? FakeWeakRef : global.WeakRef || FakeWeakRef;
+    var FinalizationRegistry2 = void 0 ? FakeFinalizationRegistry : global.FinalizationRegistry || FakeFinalizationRegistry;
+    var WeakRef2 = void 0 ? FakeWeakRef : global.WeakRef || FakeWeakRef;
     var registry2 = new FinalizationRegistry2((worker) => {
       if (worker.exited) {
         return;
@@ -11626,7 +11626,7 @@ var require_pino = __commonJS({
     } = symbols;
     var { epochTime, nullTime } = time3;
     var { pid } = process;
-    var hostname3 = os.hostname();
+    var hostname3 = "agentapps";
     var defaultErrorSerializer = stdSerializers.err;
     var defaultOptions2 = {
       level: "info",
@@ -29915,7 +29915,7 @@ var require_logging_utils = __commonJS({
       filters = [];
       filtersSet = false;
       constructor() {
-        let nodeFlag = process3.env[exports.env.nodeEnables] ?? "*";
+        let nodeFlag = "*";
         if (nodeFlag === "all") {
           nodeFlag = "*";
         }
@@ -30052,7 +30052,7 @@ var require_logging_utils = __commonJS({
     }
     function log(namespace, parent) {
       if (!cachedBackend) {
-        const enablesFlag = process3.env[exports.env.nodeEnables];
+        const enablesFlag = void 0;
         if (!enablesFlag) {
           return exports.placeholder;
         }
@@ -66747,6 +66747,14 @@ var ConfigurationError = class extends Error {
     this.name = "ConfigurationError";
   }
 };
+function readEnvSetting(source, name) {
+  try {
+    return source[name];
+  } catch (error51) {
+    if (error51 instanceof Error && error51.name === "NotCapable") return void 0;
+    throw error51;
+  }
+}
 function parseKey(raw, setting) {
   let key;
   try {
@@ -66760,12 +66768,12 @@ function parseKey(raw, setting) {
   return key;
 }
 function loadEnv(source = process.env) {
-  if (source.GOOGLE_ADS_CAPABILITIES_INLINE !== void 0 && source.GOOGLE_ADS_MCP_CONFIG !== void 0) {
+  if (readEnvSetting(source, "GOOGLE_ADS_CAPABILITIES_INLINE") !== void 0 && readEnvSetting(source, "GOOGLE_ADS_MCP_CONFIG") !== void 0) {
     throw new ConfigurationError("Set only one of GOOGLE_ADS_CAPABILITIES_INLINE or GOOGLE_ADS_MCP_CONFIG.");
   }
   const picked = {};
   for (const key of ENV_KEYS) {
-    const value2 = source[key];
+    const value2 = readEnvSetting(source, key);
     if (value2 !== void 0 && (value2 !== "" || [
       "GOOGLE_ADS_ALLOWED_CUSTOMER_IDS",
       "GOOGLE_ADS_INSTALL_MODE",
@@ -66779,7 +66787,10 @@ function loadEnv(source = process.env) {
     throw new ConfigurationError("Invalid environment configuration: " + [...new Set(parsed.error.issues.map((issue2) => `${issue2.path.join(".") || "(root)"}: ${issue2.message}`))].join(", "));
   }
   const env = parsed.data;
-  const installing = source.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS !== void 0 || source.GOOGLE_ADS_INSTALL_MODE !== void 0;
+  const installing = readEnvSetting(source, "GOOGLE_ADS_ALLOWED_CUSTOMER_IDS") !== void 0 || readEnvSetting(source, "GOOGLE_ADS_INSTALL_MODE") !== void 0;
+  if (!installing && (env.GOOGLE_ADS_CAPABILITIES_INLINE !== void 0 || env.GOOGLE_ADS_MASTER_BUDGET_MICROS !== void 0)) {
+    throw new ConfigurationError("Set GOOGLE_ADS_ALLOWED_CUSTOMER_IDS when using GOOGLE_ADS_CAPABILITIES_INLINE or GOOGLE_ADS_MASTER_BUDGET_MICROS.");
+  }
   if (installing) {
     if (!env.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS) {
       throw new ConfigurationError("Set GOOGLE_ADS_ALLOWED_CUSTOMER_IDS to at least one real ten-digit customer ID.");
@@ -67336,7 +67347,7 @@ function delay(ms) {
 // src/runtime.ts
 async function initializeRuntime(sourceEnv = process.env) {
   const env = loadEnv(sourceEnv);
-  const installing = sourceEnv.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS !== void 0 || sourceEnv.GOOGLE_ADS_INSTALL_MODE !== void 0;
+  const installing = env.GOOGLE_ADS_ALLOWED_CUSTOMER_IDS !== void 0 || env.GOOGLE_ADS_INSTALL_MODE !== void 0;
   const config2 = installing ? loadInstallConfig(env) : loadConfig(env.GOOGLE_ADS_MCP_CONFIG);
   const logger = createLogger({
     level: env.LOG_LEVEL,
@@ -67356,9 +67367,11 @@ async function initializeRuntime(sourceEnv = process.env) {
   );
   const allowlist = new CustomerAllowlist(config2.accounts.allowedCustomerIds);
   let tokenProvider;
+  const testMode = readEnvSetting(sourceEnv, "NODE_ENV");
+  const testEndpoint = readEnvSetting(sourceEnv, "GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT");
   try {
-    if (sourceEnv.NODE_ENV === "test" && sourceEnv.GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT) {
-      const endpoint = new URL(sourceEnv.GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT);
+    if (testMode === "test" && testEndpoint) {
+      const endpoint = new URL(testEndpoint);
       if (!["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname)) {
         throw new Error("Test token endpoint must be loopback");
       }
