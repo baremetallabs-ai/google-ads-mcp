@@ -17,6 +17,7 @@
     "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
     "build:agentapps": "node scripts/build-agentapps.mjs",
     "check:agentapps-artifact": "node scripts/build-agentapps.mjs --check",
+    "stage:agentapps": "node scripts/stage-agentapps.mjs",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
