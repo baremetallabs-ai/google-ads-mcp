@@ -27589,7 +27589,7 @@ var require_gaxios = __commonJS({
       #urlMayUseProxy(url2, noProxy = []) {
         const candidate = new URL(url2);
         const noProxyList = [...noProxy];
-        const noProxyEnvList = (process.env.NO_PROXY ?? process.env.no_proxy)?.split(",") || [];
+        const noProxyEnvList = [];
         for (const rule of noProxyEnvList) {
           noProxyList.push(rule.trim());
         }
@@ -27715,7 +27715,7 @@ var require_gaxios = __commonJS({
         if (!preparedHeaders.has("accept") && opts.responseType === "json") {
           preparedHeaders.set("accept", "application/json");
         }
-        const proxy = opts.proxy || process?.env?.HTTPS_PROXY || process?.env?.https_proxy || process?.env?.HTTP_PROXY || process?.env?.http_proxy;
+        const proxy = opts.proxy;
         if (opts.agent) {
         } else if (proxy && this.#urlMayUseProxy(opts.url, opts.noProxy)) {
           const HttpsProxyAgent = await _a3.#getProxyAgent();
@@ -67045,6 +67045,9 @@ function isServiceAccountClient(client) {
   if (client instanceof import_google_auth_library.BaseExternalAccountClient) return !!client.getServiceAccountEmail();
   return false;
 }
+function errorName(err) {
+  return err instanceof Error ? err.name : typeof err;
+}
 var ServiceAccountTokenProvider = class {
   constructor(options) {
     this.options = options;
@@ -67075,7 +67078,10 @@ var ServiceAccountTokenProvider = class {
       return this.client;
     } catch (err) {
       if (err instanceof GoogleAdsApiError) throw err;
-      throw new GoogleAdsApiError("Service-account credentials could not be obtained. Check the selected credential source.");
+      throw new GoogleAdsApiError(
+        "Service-account credentials could not be obtained. Check the selected credential source.",
+        { causeName: errorName(err) }
+      );
     }
   }
   async getAccessToken() {
@@ -67096,7 +67102,10 @@ var ServiceAccountTokenProvider = class {
       return token;
     } catch (err) {
       if (err instanceof GoogleAdsApiError) throw err;
-      throw new GoogleAdsApiError("Service-account credentials could not be obtained. Check the selected credential source.");
+      throw new GoogleAdsApiError(
+        "Service-account credentials could not be obtained. Check the selected credential source.",
+        { causeName: errorName(err) }
+      );
     }
   }
 };
@@ -67387,6 +67396,10 @@ async function initializeRuntime(sourceEnv = process.env) {
     }
     await tokenProvider.getAccessToken();
   } catch (err) {
+    logger.error(
+      { causeName: err instanceof GoogleAdsApiError ? err.details.causeName : void 0 },
+      "credential_exchange_failed"
+    );
     throw new ConfigurationError(err instanceof GoogleAdsApiError ? err.message : "Google Ads credentials could not be obtained. Check the selected authentication settings.");
   }
   const transport = new GoogleAdsRestClient({

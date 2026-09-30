@@ -47,6 +47,8 @@ export async function initializeRuntime(sourceEnv: NodeJS.ProcessEnv = process.e
     }
     await tokenProvider.getAccessToken();
   } catch (err) {
+    logger.error({ causeName: err instanceof GoogleAdsApiError ? err.details.causeName : undefined },
+      'credential_exchange_failed');
     throw new ConfigurationError(err instanceof GoogleAdsApiError ? err.message
       : 'Google Ads credentials could not be obtained. Check the selected authentication settings.');
   }
