@@ -65,6 +65,14 @@ describe('service-account tokens', () => {
       await expect(provider.getAccessToken()).rejects.not.toThrow('PRIVATE-SENTINEL');
     }
   });
+  it('keeps only the cause class name for diagnostics', async () => {
+    class NotCapable extends Error { override name = 'NotCapable'; }
+    const getAccessToken = vi.fn().mockRejectedValue(new NotCapable('PRIVATE-SENTINEL'));
+    const provider = new ServiceAccountTokenProvider({ source: 'json', key, createKeyClient: () => ({ credentials: {}, getAccessToken }) as never });
+    const error = await provider.getAccessToken().catch((err: unknown) => err);
+    expect(error).toMatchObject({ details: { causeName: 'NotCapable' } });
+    expect(JSON.stringify(error)).not.toContain('PRIVATE-SENTINEL');
+  });
 });
 
 describe('user token cache', () => {

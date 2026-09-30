@@ -102,6 +102,11 @@ export interface ServiceAccountProviderOptions {
   skewMs?: number;
 }
 
+/** Only the error class name leaves the provider; messages can echo credential material. */
+function errorName(err: unknown): string {
+  return err instanceof Error ? err.name : typeof err;
+}
+
 export class ServiceAccountTokenProvider implements AccessTokenProvider {
   private client?: AuthClient;
   private readonly skewMs: number;
@@ -132,7 +137,8 @@ export class ServiceAccountTokenProvider implements AccessTokenProvider {
       return this.client;
     } catch (err) {
       if (err instanceof GoogleAdsApiError) throw err;
-      throw new GoogleAdsApiError('Service-account credentials could not be obtained. Check the selected credential source.');
+      throw new GoogleAdsApiError('Service-account credentials could not be obtained. Check the selected credential source.',
+        { causeName: errorName(err) });
     }
   }
 
@@ -154,7 +160,8 @@ export class ServiceAccountTokenProvider implements AccessTokenProvider {
       return token;
     } catch (err) {
       if (err instanceof GoogleAdsApiError) throw err;
-      throw new GoogleAdsApiError('Service-account credentials could not be obtained. Check the selected credential source.');
+      throw new GoogleAdsApiError('Service-account credentials could not be obtained. Check the selected credential source.',
+        { causeName: errorName(err) });
     }
   }
 }

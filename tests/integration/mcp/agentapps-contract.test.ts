@@ -67,6 +67,13 @@ async function start(settings: Record<string, string>): Promise<{ child: ChildPr
 }
 
 describe('private AgentApps configured-start contract', () => {
+  it('bundles no request-time proxy env reads that restricted Deno would deny', () => {
+    // The loopback token test below bypasses gaxios, so guard the real token path statically.
+    const bundle = readFileSync('agentapps/main.mjs', 'utf8');
+    for (const name of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'NO_PROXY', 'no_proxy']) {
+      expect(bundle).not.toMatch(new RegExp(`process\\??\\.env\\??\\.${name}\\b`));
+    }
+  });
   it('validates the self-contained pinned module manifest and all 30 declarations', () => {
     expect(() => ServerManifestSchema.parse(manifest)).not.toThrow();
     expect(profile.tools).toHaveLength(30);
