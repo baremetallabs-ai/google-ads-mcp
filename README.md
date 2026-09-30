@@ -38,7 +38,22 @@ the MCP client.
 ## Private AgentApps installation
 
 Publish the reviewed source revision with its committed `server.json` and
-`agentapps/main.mjs` as one **private** AgentApps entry. The catalog declares the same
+`agentapps/main.mjs` as one **private** AgentApps entry. Stage it first, from a clean
+checkout of that revision, and publish the staged directory, never the repository root:
+
+```bash
+npm run stage:agentapps     # writes dist/agentapps-publish/
+sovereign agentapps publish dist/agentapps-publish
+```
+
+`sovereign agentapps publish` uploads every file in the directory it is given,
+including Git-ignored ones such as `.env` and `node_modules`. The owner cell also
+installs a root `package.json` and refuses dependencies with install hooks, which the
+development toolchain has. The bundled entry imports only Node built-ins, so the staging
+script copies just `server.json`, the entry module it names, and this README. It fails
+if the committed bundle is stale or the staged directory holds anything else.
+
+The catalog declares the same
 15 read and 15 mutation actions for both install modes. Owner review with placeholder
 settings may show **Needs real settings**. An installation remains **Activating** and
 exposes no tools until its first start with real settings validates credentials and
