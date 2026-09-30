@@ -76,6 +76,21 @@ describe('service-account tokens', () => {
 });
 
 describe('user token cache', () => {
+  it('keeps only the cause class name for diagnostics', async () => {
+    class NotCapable extends Error { override name = 'NotCapable'; }
+    const cause = new NotCapable('PRIVATE-CLIENT-SECRET PRIVATE-REFRESH-TOKEN');
+    const spy = vi.spyOn(OAuth2Client.prototype, 'getAccessToken').mockRejectedValue(cause);
+    try {
+      const provider = new OAuth2RefreshTokenProvider({ clientId: 'id', clientSecret: 'PRIVATE-CLIENT-SECRET', refreshToken: 'PRIVATE-REFRESH-TOKEN' });
+      const error = await provider.getAccessToken().catch((err: unknown) => err);
+      expect(error).toMatchObject({ details: { hint: 'npm run get-refresh-token', causeName: 'NotCapable' } });
+      expect(error).not.toHaveProperty('cause');
+      expect(JSON.stringify(error)).not.toContain('PRIVATE-CLIENT-SECRET');
+      expect(JSON.stringify(error)).not.toContain('PRIVATE-REFRESH-TOKEN');
+    } finally {
+      spy.mockRestore();
+    }
+  });
   it('shares refresh and caches token', async () => {
     const spy = vi.spyOn(OAuth2Client.prototype, 'getAccessToken').mockResolvedValue({ token: 'user-bearer', res: { data: { expires_in: 3600 } } } as never);
     const provider = new OAuth2RefreshTokenProvider({ clientId: 'id', clientSecret: 'secret', refreshToken: 'refresh' });

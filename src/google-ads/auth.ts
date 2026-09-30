@@ -61,13 +61,13 @@ export class OAuth2RefreshTokenProvider implements AccessTokenProvider {
       return token;
     } catch (err) {
       if (err instanceof GoogleAdsApiError) throw err;
-      // Deliberately does not attach the cause: OAuth error payloads can echo
+      // Keep only the class name: OAuth error payloads can echo
       // client_secret and refresh_token back at us.
       throw new GoogleAdsApiError(
         'Failed to obtain a Google Ads access token. The refresh token may be expired ' +
           'or revoked. Check GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET and ' +
           'GOOGLE_ADS_REFRESH_TOKEN, and mint a new refresh token if needed.',
-        { hint: 'npm run get-refresh-token' },
+        { hint: 'npm run get-refresh-token', causeName: errorName(err) },
       );
     }
   }
