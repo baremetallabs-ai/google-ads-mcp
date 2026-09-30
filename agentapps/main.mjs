@@ -67031,7 +67031,7 @@ var OAuth2RefreshTokenProvider = class {
       if (err instanceof GoogleAdsApiError) throw err;
       throw new GoogleAdsApiError(
         "Failed to obtain a Google Ads access token. The refresh token may be expired or revoked. Check GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET and GOOGLE_ADS_REFRESH_TOKEN, and mint a new refresh token if needed.",
-        { hint: "npm run get-refresh-token" }
+        { hint: "npm run get-refresh-token", causeName: errorName(err) }
       );
     }
   }
