@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   MUTATION_TOOL_NAMES,
@@ -22,6 +23,16 @@ describe('standard tools/list', () => {
     expect(names).toHaveLength(30);
     for (const name of READ_TOOL_NAMES) expect(names).toContain(name);
     for (const name of MUTATION_TOOL_NAMES) expect(names).toContain(name);
+  });
+
+  it('keeps the staging slug limit tied to registered tool names', async () => {
+    harness = await buildTestServer();
+    const { tools } = await harness.client.listTools();
+    const script = readFileSync('scripts/stage-agentapps.mjs', 'utf8');
+    const longest = /const LONGEST_TOOL = '([^']+)';/.exec(script)?.[1];
+    expect(longest).toBeDefined();
+    expect(tools.map((tool) => tool.name)).toContain(longest);
+    for (const tool of tools) expect(tool.name.length, tool.name).toBeLessThanOrEqual(longest!.length);
   });
 
   it('gives every tool a title, a description and an input schema', async () => {
