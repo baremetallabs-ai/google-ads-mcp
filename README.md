@@ -53,7 +53,8 @@ development toolchain has. The bundled entry imports only Node built-ins, so the
 script copies just `server.json`, the entry module it names, and this README. It fails
 if the committed bundle is stale, if any staged file has uncommitted changes (override
 with `--allow-dirty`), or if the staged directory holds anything else. `--out <dir>`
-picks another destination; it must be absent or a previous staging directory, and the
+picks another destination; it must be absent or a complete staging directory matching
+the current source bytes (allowing the slug rewrite), and the
 script refuses the checkout, its ancestors, and any directory holding other files
 rather than deleting them.
 

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -8,10 +9,11 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 // Each staging run executes a full esbuild bundle through `build-agentapps.mjs --check`,
 // which can approach vitest's 5 s default on slower runners.
@@ -35,6 +37,31 @@ function stage(...args: string[]) {
   });
 }
 
+// Safety/error probes use a disposable tree, never the developer's checkout.
+// Even the ancestor outputs below remain inside the mkdtemp directory.
+function fixture() {
+  const root = join(tempDir(), 'parent', 'repo');
+  mkdirSync(join(root, 'scripts'), { recursive: true });
+  mkdirSync(join(root, 'agentapps'));
+  for (const file of [
+    'server.json',
+    'README.md',
+    'agentapps/main.mjs',
+    'scripts/stage-agentapps.mjs',
+  ]) {
+    copyFileSync(file, join(root, file));
+  }
+  // Guard probes must reach the deletion if a guard regresses, without bundling.
+  writeFileSync(join(root, 'scripts/build-agentapps.mjs'), '');
+  writeFileSync(join(root, 'package.json'), '{"type":"module"}');
+  const run = (...args: string[]) =>
+    spawnSync(process.execPath, ['scripts/stage-agentapps.mjs', '--allow-dirty', ...args], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+  return { root, run };
+}
+
 function listFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -44,7 +71,7 @@ function listFiles(dir: string): string[] {
 
 function stagedFiles(out: string): string[] {
   return listFiles(out)
-    .map((path) => relative(out, path))
+    .map((path) => relative(out, path).split(sep).join('/'))
     .sort();
 }
 
@@ -110,12 +137,13 @@ describe('AgentApps publish staging', () => {
   });
 
   it('refuses the repository root and its ancestors as --out', () => {
-    for (const out of ['.', '..', resolve('..', '..')]) {
-      const run = stage('--out', out);
+    const sandbox = fixture();
+    for (const out of ['.', '..', '../..']) {
+      const run = sandbox.run('--out', out);
       expect(run.status).not.toBe(0);
       expect(run.stderr).toContain('must not be the repository');
     }
-    expect(existsSync('package.json')).toBe(true);
+    expect(existsSync(join(sandbox.root, 'package.json'))).toBe(true);
   });
 
   it('refuses to replace a directory that holds anything but staged files', () => {
@@ -130,10 +158,79 @@ describe('AgentApps publish staging', () => {
     expect(readFileSync(join(out, 'keep.txt'), 'utf8')).toBe('precious');
 
     // A source directory inside the checkout is refused the same way.
-    const src = stage('--out', 'agentapps');
+    const sandbox = fixture();
+    const src = sandbox.run('--out', 'agentapps');
     expect(src.status).not.toBe(0);
     expect(src.stderr).toContain('not a staging directory');
-    expect(existsSync('agentapps/main.mjs')).toBe(true);
+    expect(existsSync(join(sandbox.root, 'agentapps/main.mjs'))).toBe(true);
+  });
+
+  it('refuses partial or modified staging contents without changing them', () => {
+    const sandbox = fixture();
+    const out = join(tempDir(), 'publish');
+    mkdirSync(out);
+    writeFileSync(join(out, 'README.md'), 'precious');
+    expect(sandbox.run('--out', out).stderr).toContain('not a staging directory');
+    expect(readFileSync(join(out, 'README.md'), 'utf8')).toBe('precious');
+    copyFileSync('server.json', join(out, 'server.json'));
+    mkdirSync(join(out, 'agentapps'));
+    copyFileSync('agentapps/main.mjs', join(out, 'agentapps/main.mjs'));
+    expect(sandbox.run('--out', out).stderr).toContain('not a staging directory');
+    expect(readFileSync(join(out, 'README.md'), 'utf8')).toBe('precious');
+  });
+
+  it('allows a prior slug rewrite but refuses changed manifest or entry bytes', () => {
+    const sandbox = fixture();
+    const out = join(tempDir(), 'publish');
+    expect(sandbox.run('--out', out, '--slug', 'client-one').status).toBe(0);
+    expect(sandbox.run('--out', out, '--slug', 'client-two').status).toBe(0);
+    const manifestPath = join(out, 'server.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.description = 'unrelated data';
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    expect(sandbox.run('--out', out).stderr).toContain('not a staging directory');
+    expect(JSON.parse(readFileSync(manifestPath, 'utf8')).description).toBe('unrelated data');
+    copyFileSync('server.json', manifestPath);
+    writeFileSync(join(out, 'agentapps/main.mjs'), 'precious');
+    expect(sandbox.run('--out', out).stderr).toContain('not a staging directory');
+    expect(readFileSync(join(out, 'agentapps/main.mjs'), 'utf8')).toBe('precious');
+  });
+
+  it('rejects flags consumed as option values', () => {
+    for (const option of ['--out', '--slug']) {
+      const run = stage(option, '--allow-dirty');
+      expect(run.status).not.toBe(0);
+      expect(run.stderr).toContain(`${option} requires a value`);
+    }
+  });
+
+  it('rejects Windows traversal and drive paths before writing', () => {
+    const sandbox = fixture();
+    for (const entry of ['..\\secret', 'C:/secret', 'C:secret', '/secret', '../secret']) {
+      const manifest = JSON.parse(readFileSync('server.json', 'utf8'));
+      manifest._meta['ai.baremetal/agentapps'].entry.module = entry;
+      writeFileSync(join(sandbox.root, 'server.json'), JSON.stringify(manifest));
+      const out = join(tempDir(), 'publish');
+      const run = sandbox.run('--out', out);
+      expect(run.status).not.toBe(0);
+      expect(run.stderr).toContain('must declare a relative');
+      expect(existsSync(out)).toBe(false);
+    }
+  });
+
+  it('refuses symlink sources and parent directories before deleting output', () => {
+    for (const file of ['server.json', 'README.md', 'agentapps/main.mjs', 'agentapps']) {
+      const sandbox = fixture();
+      const out = tempDir();
+      writeFileSync(join(out, 'keep.txt'), 'precious');
+      const target = join(sandbox.root, file);
+      rmSync(target, { recursive: true });
+      symlinkSync(join(sandbox.root, 'package.json'), target);
+      const run = sandbox.run('--out', out);
+      expect(run.status).not.toBe(0);
+      expect(run.stderr).toContain('without symbolic links');
+      expect(readFileSync(join(out, 'keep.txt'), 'utf8')).toBe('precious');
+    }
   });
 
   it('rejects unknown arguments', () => {
