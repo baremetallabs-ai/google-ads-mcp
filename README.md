@@ -51,7 +51,25 @@ including Git-ignored ones such as `.env` and `node_modules`. The owner cell als
 installs a root `package.json` and refuses dependencies with install hooks, which the
 development toolchain has. The bundled entry imports only Node built-ins, so the staging
 script copies just `server.json`, the entry module it names, and this README. It fails
-if the committed bundle is stale or the staged directory holds anything else.
+if the committed bundle is stale, if any staged file has uncommitted changes (override
+with `--allow-dirty`), or if the staged directory holds anything else. `--out <dir>`
+picks another destination; it must be absent or a previous staging directory, and the
+script refuses the checkout, its ancestors, and any directory holding other files
+rather than deleting them.
+
+An agent can hold only one install per catalog slug. To give each client account its
+own install, allowlist, and master budget, publish one entry per client with a distinct
+slug. `--slug` rewrites the staged `server.json` `name` and slug (the source is
+untouched) and defaults the destination to `dist/agentapps-publish-<slug>/`:
+
+```bash
+npm run stage:agentapps -- --slug google-ads-formagents
+sovereign agentapps publish dist/agentapps-publish-google-ads-formagents
+```
+
+Slugs are lowercase kebab-case. eve's AgentApps extension names tools
+`apps__cell__<slug>__<tool>` under a 64-character limit, so the script rejects slugs
+longer than 23 characters.
 
 The catalog declares the same
 15 read and 15 mutation actions for both install modes. Owner review with placeholder
