@@ -16,8 +16,8 @@
         "googleads.googleapis.com:443"
       ],
       "startup": {
-        "attempts": 60,
-        "intervalMs": 100
+        "attempts": 30,
+        "intervalMs": 1000
       },
       "limits": {
         "memoryMb": 512,
