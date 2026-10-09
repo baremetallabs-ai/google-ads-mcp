@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, it, expect, afterEach } from 'vitest';
+import { buildToolSet } from '../../../src/mcp/register-tools.js';
+import { createMcpServer } from '../../../src/mcp/server.js';
 import {
   MUTATION_TOOL_NAMES,
   PROHIBITED_TOOL_NAMES,
@@ -15,6 +19,50 @@ afterEach(async () => {
 });
 
 describe('standard tools/list', () => {
+  it('shares one tool set across concurrent servers with identical discovery and working calls', async () => {
+    const mock = new GoogleAdsMock();
+    const customerId = '1234567890';
+    const rows = [{ campaign: { id: '123' } }];
+    mock.onSearch(customerId, { results: rows }, { times: 2 });
+    harness = await buildTestServer({ fetchImpl: mock.fetchImpl });
+    const tools = buildToolSet(harness.deps);
+    const peers = Array.from({ length: 2 }, () => ({
+      ...createMcpServer(harness!.deps, tools),
+      client: new Client({ name: 'shared-tools-test', version: '1.0.0' }),
+    }));
+
+    try {
+      await Promise.all(peers.map(async ({ server, client }) => {
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+        await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+      }));
+      const expected = await harness.client.listTools();
+      expect(expected.tools).toHaveLength(30);
+      await Promise.all(peers.map(async ({ client, report }) => {
+        expect(report).toBe(tools.report);
+        expect(await client.listTools()).toEqual(expected);
+        const result = await callTool(client, 'search_google_ads', {
+          customerId, query: 'SELECT campaign.id FROM campaign LIMIT 1',
+        });
+        expect(result.isError).toBe(false);
+        expect(result.structured.rowCount).toBe(1);
+        expect(result.structured.resource).toBe('campaign');
+        const invalid = await callTool(client, 'pause_campaign', {
+          customerId, campaignId: '123', approved: true,
+        });
+        expect(invalid.isError).toBe(true);
+        expect(invalid.text).toContain('approved');
+      }));
+      expect(mock.requests).toHaveLength(2);
+    } finally {
+      await Promise.all(peers.map(async ({ client, server }) => {
+        await client.close();
+        await server.close();
+      }));
+      await mock.close();
+    }
+  });
+
   it('advertises every read tool and every enabled mutation tool', async () => {
     harness = await buildTestServer();
     const { tools } = await harness.client.listTools();
