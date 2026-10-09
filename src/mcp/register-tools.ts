@@ -15,24 +15,31 @@ export interface RegistrationReport {
   suppressed: { name: MutationToolName; reason: ToolDisabledReason }[];
 }
 
+/** The fixed tool contract, built once and registered onto each per-request server. */
+export interface ToolSet {
+  report: RegistrationReport;
+  register(server: McpServer): void;
+}
+
 /**
- * Register the fixed read and mutation tool contract in every mode.
+ * Build the fixed read and mutation tool contract in every mode.
  */
-export function registerTools(server: McpServer, deps: Deps): RegistrationReport {
+export function buildToolSet(deps: Deps): ToolSet {
   const report: RegistrationReport = { readTools: [], mutationTools: [], suppressed: [] };
+  const tools: ((server: McpServer) => void)[] = [];
 
   for (const def of READ_TOOLS) {
-    server.registerTool(
-      def.name,
-      {
-        title: def.title,
-        description: def.description,
-        inputSchema: z.strictObject(def.inputSchema),
-        outputSchema: toolOutputSchema(def.outputSchema),
-        annotations: { title: def.title, ...READ_ANNOTATIONS },
-      },
-      createReadHandler(def, deps) as never,
-    );
+    const config = {
+      title: def.title,
+      description: def.description,
+      inputSchema: z.strictObject(def.inputSchema),
+      outputSchema: toolOutputSchema(def.outputSchema),
+      annotations: { title: def.title, ...READ_ANNOTATIONS },
+    };
+    const handler = createReadHandler(def, deps) as never;
+    tools.push((server) => {
+      server.registerTool(def.name, config, handler);
+    });
     report.readTools.push(def.name);
   }
 
@@ -45,18 +52,18 @@ export function registerTools(server: McpServer, deps: Deps): RegistrationReport
     // "no custom approval arguments" visible to a client rather than only enforced
     // after the fact: the advertised JSON Schema carries additionalProperties: false.
     const inputSchema = z.strictObject(def.buildInputSchema());
-    server.registerTool(
-      def.name,
-      {
-        title: def.title,
-        description: def.description,
-        // Fixed descriptor; narrower policy is enforced in the handler.
-        inputSchema,
-        outputSchema: toolOutputSchema(def.outputSchema),
-        annotations: def.annotations,
-      },
-      createMutationHandler(def, deps, inputSchema) as never,
-    );
+    const config = {
+      title: def.title,
+      description: def.description,
+      // Fixed descriptor; narrower policy is enforced in the handler.
+      inputSchema,
+      outputSchema: toolOutputSchema(def.outputSchema),
+      annotations: def.annotations,
+    };
+    const handler = createMutationHandler(def, deps, inputSchema) as never;
+    tools.push((server) => {
+      server.registerTool(def.name, config, handler);
+    });
     report.mutationTools.push(name);
   }
 
@@ -71,5 +78,10 @@ export function registerTools(server: McpServer, deps: Deps): RegistrationReport
     'tool_registration_complete',
   );
 
-  return report;
+  return {
+    report,
+    register(server) {
+      for (const add of tools) add(server);
+    },
+  };
 }
