@@ -134,7 +134,9 @@ describe('private AgentApps configured-start contract', () => {
         GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT: `http://127.0.0.1:${token.port}/token` });
       const legacy = new Client({ name: 'legacy-client', version: '1.0.0' });
       await expect(legacy.connect(new StreamableHTTPClientTransport(processServer.url), { timeout: 3000 }))
-        .rejects.toThrow();
+        .rejects.toThrow(/Unsupported protocol version: 2025-11-25/);
+      expect(processServer.stderr()).toContain('mcp_handler_error');
+      expect(processServer.stderr()).toContain('Unsupported protocol version: 2025-11-25');
       await legacy.close();
     });
 

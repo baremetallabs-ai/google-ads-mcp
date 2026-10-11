@@ -14,6 +14,7 @@ import {
   createTestClient,
   type TestHarness,
 } from '../../helpers/build-test-server.js';
+import { matchesDeclaredTools } from '../../helpers/agentapps-contract.js';
 import { GoogleAdsMock } from '../../helpers/mock-google-ads.js';
 
 let harness: TestHarness | undefined;
@@ -23,6 +24,38 @@ afterEach(async () => {
 });
 
 describe('standard tools/list', () => {
+  it('preserves legacy stdio negotiation, the declared contract, and tool result envelopes', async () => {
+    const mock = new GoogleAdsMock();
+    const customerId = '1234567890';
+    const rows = [{ campaign: { id: '123' } }];
+    mock.onSearch(customerId, { results: rows });
+    try {
+      harness = await buildTestServer({ era: 'legacy', fetchImpl: mock.fetchImpl });
+      expect(harness.client.getProtocolEra()).toBe('legacy');
+      expect(harness.client.getNegotiatedProtocolVersion()).toBe('2025-11-25');
+      const { tools } = await harness.client.listTools();
+      const manifest = JSON.parse(readFileSync('server.json', 'utf8'));
+      expect(tools).toHaveLength(30);
+      expect(matchesDeclaredTools(manifest._meta['ai.baremetal/agentapps'].tools, tools)).toBe(true);
+      const success = await callTool(harness.client, 'search_google_ads', {
+        customerId, query: 'SELECT campaign.id FROM campaign LIMIT 1',
+      });
+      expect(success.isError).toBe(false);
+      expect(success.structured.rows).toEqual(rows);
+      expect(success.structured.rowCount).toBe(1);
+      const denied = await callTool(harness.client, 'search_google_ads', {
+        customerId: '7654321098', query: 'SELECT campaign.id FROM campaign LIMIT 1',
+      });
+      expect(denied.isError).toBe(true);
+      expect(denied.structured.success).toBe(false);
+      expect(denied.structured.error.code).toBe('UNAUTHORIZED_CUSTOMER');
+      expect(denied.text).toContain('UNAUTHORIZED_CUSTOMER');
+      expect(mock.requests).toHaveLength(1);
+    } finally {
+      await mock.close();
+    }
+  });
+
   it('shares one tool set across concurrent servers with identical discovery and working calls', async () => {
     const mock = new GoogleAdsMock();
     const customerId = '1234567890';

@@ -35,7 +35,7 @@
     "check": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
     "google-auth-library": "^11.0.2",
     "pino": "^10.3.1",
     "yaml": "^2.9.0",
@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/client": "2.0.0",
     "@types/node": "^22.18.0",
     "@vitest/coverage-v8": "^4.1.11",
     "esbuild": "^0.28.2",
