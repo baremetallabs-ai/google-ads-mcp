@@ -16,6 +16,9 @@ const handler = createMcpHandler(() => createMcpServer(deps, tools).server, {
   legacy: 'reject',
   // No tool emits mid-call notifications; answer every exchange with one JSON body.
   responseMode: 'json',
+  onerror: (error) => {
+    deps.logger.warn({ err: error.message }, 'mcp_handler_error');
+  },
 });
 
 export default {

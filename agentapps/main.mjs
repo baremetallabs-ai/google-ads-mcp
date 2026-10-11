@@ -65526,7 +65526,10 @@ var tools = buildToolSet(deps);
 var handler = createMcpHandler(() => createMcpServer(deps, tools).server, {
   legacy: "reject",
   // No tool emits mid-call notifications; answer every exchange with one JSON body.
-  responseMode: "json"
+  responseMode: "json",
+  onerror: (error51) => {
+    deps.logger.warn({ err: error51.message }, "mcp_handler_error");
+  }
 });
 var agentapps_default = {
   async fetch(request) {
