@@ -5,9 +5,9 @@ import { z } from 'zod';
  *
  * Two constraints from the MCP SDK shape this:
  *
- *  1. `outputSchema` must normalize to an object. A union (a success variant and an
- *     error variant) normalizes to `undefined`, which silently drops the schema from
- *     tools/list and then throws when the SDK tries to validate a result against it.
+ *  1. `outputSchema` must be an object schema. A union (a success variant and an
+ *     error variant) has no object root, so clients cannot treat `structuredContent`
+ *     as a record of named fields.
  *
  *  2. The server skips output validation for `isError: true` results, but a strict
  *     *client* validates `structuredContent` against the advertised schema either
@@ -19,12 +19,13 @@ import { z } from 'zod';
  * options. Field names and types stay advertised, which is what a client actually
  * uses the schema for.
  */
-export function toolOutputSchema(shape: z.ZodRawShape): z.ZodRawShape {
+export function toolOutputSchema(shape: z.ZodRawShape): z.ZodObject {
   const optional: Record<string, z.ZodType> = {};
   for (const [key, schema] of Object.entries(shape)) {
     optional[key] = (schema as z.ZodType).optional();
   }
-  return {
+  // A plain (non-strict) object, matching how SDK 1.x wrapped a raw output shape.
+  return z.object({
     ...optional,
     success: z.boolean().optional().describe('False when the call failed; see `error`.'),
     error: z
@@ -35,5 +36,5 @@ export function toolOutputSchema(shape: z.ZodRawShape): z.ZodRawShape {
       })
       .optional()
       .describe('Present only on failure. `code` is a stable machine-readable error code.'),
-  };
+  });
 }

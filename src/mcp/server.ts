@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { buildToolSet, type RegistrationReport, type ToolSet } from './register-tools.js';
 import type { Deps } from '../types/index.js';
 

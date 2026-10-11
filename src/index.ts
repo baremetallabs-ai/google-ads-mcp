@@ -1,13 +1,15 @@
 #!/usr/bin/env node
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { ConfigurationError } from './config/env.js';
+import { buildToolSet } from './mcp/register-tools.js';
 import { createMcpServer } from './mcp/server.js';
 import { initializeRuntime } from './runtime.js';
 
 async function main(): Promise<void> {
   // Everything below writes to stderr only. stdout is the MCP JSON-RPC channel.
   const deps = await initializeRuntime();
-  const { server, report } = createMcpServer(deps);
+  const tools = buildToolSet(deps);
+  const { report } = tools;
 
   deps.logger.info(
     {
@@ -19,12 +21,18 @@ async function main(): Promise<void> {
     'server_starting',
   );
 
-  const stdio = new StdioServerTransport();
-  await server.connect(stdio);
+  // serveStdio owns the era decision: the opening exchange selects the 2026-07-28
+  // (server/discover) or 2025 (initialize) era, and one server from the factory is pinned
+  // for the connection. Local clients still largely speak 2025, so both eras are served.
+  const connection = serveStdio(() => createMcpServer(deps, tools).server, {
+    onerror: (error) => {
+      deps.logger.error({ err: error.message }, 'stdio_transport_error');
+    },
+  });
 
   const shutdown = (signal: string): void => {
     deps.logger.info({ signal }, 'server_shutdown');
-    void server.close().finally(() => process.exit(0));
+    void connection.close().finally(() => process.exit(0));
   };
   process.on('SIGINT', () => { shutdown('SIGINT'); });
   process.on('SIGTERM', () => { shutdown('SIGTERM'); });

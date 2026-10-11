@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { toolOutputSchema } from './output-schema.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { MUTATION_TOOL_NAMES, type MutationToolName } from '../capabilities/tool-names.js';
 import type { ToolDisabledReason } from '../errors/tool-errors.js';
 import { READ_TOOLS } from './tools/read/index.js';

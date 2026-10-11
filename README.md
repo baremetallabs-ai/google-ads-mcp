@@ -58,6 +58,12 @@ the current source bytes (allowing the slug rewrite), and the
 script refuses the checkout, its ancestors, and any directory holding other files
 rather than deleting them.
 
+The bundled entry serves MCP at `/mcp` (every other path answers 404) through the MCP
+TypeScript SDK 2.x `createMcpHandler`, in the **modern protocol era only**
+(2026-07-28: `server/discover`, no `initialize`), matching `compatibility.era: "modern"`
+in `server.json` and the AgentApps cell's pinned client. A 2025-era `initialize` is
+refused with the SDK's unsupported-protocol-version error.
+
 An agent can hold only one install per catalog slug. To give each client account its
 own install, allowlist, and master budget, publish one entry per client with a distinct
 slug. `--slug` rewrites the staged `server.json` `name` and slug (the source is
@@ -139,7 +145,12 @@ After the installation activates, an operator may make a harmless live call to
 ## Architecture
 
 A single stdio process. The MCP client launches it, speaks JSON-RPC over stdin/stdout,
-and the server talks to the Google Ads REST API over HTTPS.
+and the server talks to the Google Ads REST API over HTTPS. The server is built on the
+MCP TypeScript SDK 2.x (`@modelcontextprotocol/server`). The stdio entry serves both
+protocol eras: the client's opening exchange selects the 2026-07-28 era
+(`server/discover`) or the 2025 era (`initialize`) for the connection. The AgentApps
+module entry is the same tool set over streamable HTTP, modern era only (see
+[Private AgentApps installation](#private-agentapps-installation)).
 
 ```
 MCP client  ──stdio JSON-RPC──▶  google-ads-mcp  ──HTTPS──▶  Google Ads REST API
@@ -204,8 +215,8 @@ here rather than generated. The API version is pinned by `GOOGLE_ADS_API_VERSION
 
 ## MCP client compatibility
 
-Any spec-compliant MCP client works. The server uses only `tools/list` and
-`tools/call`, with standard tool annotations. There is no custom transport, no
+Any spec-compliant MCP client works, whether it speaks the 2025 protocol revisions or
+2026-07-28 over stdio. The server uses only `tools/list` and `tools/call`, with standard tool annotations. There is no custom transport, no
 proprietary extension, and no bespoke client.
 
 Copy `examples/mcp-client-config.json` into your client's MCP configuration, or
@@ -248,7 +259,7 @@ current-state checks, and Google Ads validation.
 The server supports user OAuth credentials and direct service-account credentials. Both
 modes request only the Google Ads scope (https://www.googleapis.com/auth/adwords).
 Access tokens are cached before expiry, and concurrent refreshes share one request.
-Startup obtains a token before the stdio server connects. Developer tokens are
+Startup obtains a token before either entry starts serving. Developer tokens are
 deprecated and optional in both modes. A supplied token is sent for compatibility;
 otherwise the developer-token header is omitted.
 
@@ -784,7 +795,8 @@ npm test
 
 Two tiers. **Unit** covers config fail-closed behavior, customer normalization and
 allowlist rejection, the GAQL guard, bigint budget arithmetic, error mapping, and
-redaction. **Integration** runs a real `McpServer` over an in-memory transport against
+redaction. **Integration** runs a real `McpServer` over an in-memory transport, with the SDK's
+stdio era selection on the server side and a 2.x client pinned to the 2026-07-28 era, against
 an HTTP-level `undici` mock, so no network is touched and tests can assert on the exact
 JSON sent to Google.
 

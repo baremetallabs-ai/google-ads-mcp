@@ -4,8 +4,8 @@
  * Spawns the built server over real stdio, runs read tools against a live account,
  * and prints a summary. Read-only: it never calls a mutation tool.
  */
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { readFileSync } from 'node:fs';
 
 const env: Record<string, string> = {};
@@ -29,7 +29,11 @@ const transport = new StdioClientTransport({
   env: { ...(process.env as Record<string, string>), ...env },
   stderr: 'pipe',
 });
-const client = new Client({ name: 'live-probe', version: '1.0.0' });
+// Pin the modern era (server/discover), the same negotiation the AgentApps cell uses.
+const client = new Client(
+  { name: 'live-probe', version: '1.0.0' },
+  { versionNegotiation: { mode: { pin: '2026-07-28' } } },
+);
 await client.connect(transport);
 
 const { tools } = await client.listTools();

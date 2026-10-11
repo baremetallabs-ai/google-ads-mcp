@@ -2,8 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer, type RequestListener, type Server } from 'node:http';
 import { readFileSync } from 'node:fs';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { ServerManifestSchema, matchesDeclaredTools } from '../../helpers/agentapps-contract.js';
 
 const manifest = JSON.parse(readFileSync('server.json', 'utf8')) as Record<string, unknown>;
@@ -17,6 +16,17 @@ const serviceKey = JSON.stringify({ type: 'service_account', client_email: 'svc@
   private_key: 'FAKE-PRIVATE-KEY-FOR-LOOPBACK-TEST' });
 const base = { GOOGLE_ADS_ALLOWED_CUSTOMER_IDS: customerId, GOOGLE_ADS_AUTH_MODE: 'service_account',
   GOOGLE_ADS_SERVICE_ACCOUNT_SOURCE: 'json', GOOGLE_ADS_SERVICE_ACCOUNT_KEY_JSON: serviceKey };
+// The cell's own client shape (packages/agent-apps-mcp/src/app-client.ts, era 'modern'):
+// pinned 2026-07-28 negotiation via server/discover, with no initialize fallback.
+const APP_PROTOCOL_REVISION = '2026-07-28';
+function createCellClient(): Client {
+  return new Client({ name: 'agentapps-cell', version: '1.0.0' }, {
+    capabilities: { elicitation: { url: {} } },
+    inputRequired: { autoFulfill: false },
+    listMaxPages: 64,
+    versionNegotiation: { mode: { pin: APP_PROTOCOL_REVISION } },
+  });
+}
 const children: ChildProcess[] = [];
 const servers: Server[] = [];
 afterEach(async () => {
@@ -100,9 +110,11 @@ describe('private AgentApps configured-start contract', () => {
       });
       const processServer = await start({ ...settings, NODE_ENV: 'test',
         GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT: `http://127.0.0.1:${token.port}/token` });
-      const client = new Client({ name: 'agentapps-qualification', version: '1.0.0' });
+      const client = createCellClient();
       try {
-        await client.connect(new StreamableHTTPClientTransport(processServer.url));
+        await client.connect(new StreamableHTTPClientTransport(processServer.url), { timeout: 3000 });
+        expect(client.getProtocolEra()).toBe('modern');
+        expect(client.getNegotiatedProtocolVersion()).toBe(APP_PROTOCOL_REVISION);
         const { tools } = await client.listTools();
         expect(tools).toHaveLength(30);
         expect(matchesDeclaredTools(profile.tools, tools)).toBe(true);
@@ -111,6 +123,19 @@ describe('private AgentApps configured-start contract', () => {
       } finally {
         await client.close();
       }
+    });
+
+    it('serves the modern era only and rejects a 2025-era initialize', async () => {
+      const token = await listen((_req, res) => {
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ access_token: 'loopback-test-token' }));
+      });
+      const processServer = await start({ ...base, NODE_ENV: 'test',
+        GOOGLE_ADS_MCP_TEST_TOKEN_ENDPOINT: `http://127.0.0.1:${token.port}/token` });
+      const legacy = new Client({ name: 'legacy-client', version: '1.0.0' });
+      await expect(legacy.connect(new StreamableHTTPClientTransport(processServer.url), { timeout: 3000 }))
+        .rejects.toThrow();
+      await legacy.close();
     });
 
     it('fails closed on placeholder settings before serving tools', async () => {
